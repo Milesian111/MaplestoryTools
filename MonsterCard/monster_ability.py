@@ -4,9 +4,36 @@ import numpy as np
 import winsound
 import time
 from pathlib import Path
+import sys
+import os
+try:
+    from PIL import Image
+    HAS_PIL = True
+except ImportError:
+    HAS_PIL = False
 
-# 获取当前脚本所在目录
-BASE_DIR = Path(__file__).parent
+def get_resource_path(relative_path):
+    """获取资源文件的绝对路径，兼容PyInstaller打包后的exe"""
+    try:
+        # PyInstaller打包后会设置_MEIPASS属性
+        base_path = sys._MEIPASS
+    except Exception:
+        # 开发环境，使用脚本所在目录
+        base_path = os.path.abspath(os.path.dirname(__file__))
+    # 将相对路径中的正斜杠转换为系统路径分隔符
+    relative_path = relative_path.replace('/', os.sep).replace('\\', os.sep)
+    full_path = os.path.join(base_path, relative_path)
+    # 规范化路径（处理 .. 和 . 等）
+    full_path = os.path.normpath(full_path)
+    return full_path
+
+# 获取当前脚本所在目录（兼容打包）
+try:
+    # PyInstaller打包后
+    BASE_DIR = Path(sys._MEIPASS)
+except Exception:
+    # 开发环境
+    BASE_DIR = Path(__file__).parent
 
 # 查找范围 (x1, y1, x2, y2)
 SEARCH_REGION = (0, 0, 1366, 768)
@@ -38,7 +65,13 @@ MIN_MATCH_DISTANCE = 10
 BTN_RESET_REGION = SEARCH_REGION
 BTN_CONFIRM_REGION = SEARCH_REGION
 
-def find_image_and_click(template_path, region):
+def _log(msg, log_callback=None):
+    """同时输出到print和log_callback"""
+    print(msg)
+    if log_callback:
+        log_callback(msg)
+
+def find_image_and_click(template_path, region, log_callback=None):
     """在指定区域内查找模板图，找到后点击匹配中心。
     返回 True 表示找到并已点击，False 表示未找到。"""
     x1, y1, x2, y2 = region
@@ -46,29 +79,80 @@ def find_image_and_click(template_path, region):
     width = x2 - x1
     height = y2 - y1
 
-    img_path = BASE_DIR / template_path
-    if not img_path.exists():
-        print(f"✗ 模板不存在: {template_path}")
+    # 使用get_resource_path获取正确的资源路径（兼容打包）
+    img_path = get_resource_path(template_path)
+    img_path_obj = Path(img_path)
+    _log(f"[调试] 模板路径: {img_path}", log_callback)
+    _log(f"[调试] 路径是否存在: {img_path_obj.exists()}", log_callback)
+    
+    if not img_path_obj.exists():
+        _log(f"✗ 模板不存在: {template_path}", log_callback)
+        _log(f"[调试] 尝试路径 = {img_path}", log_callback)
+        # 尝试列出目录内容用于调试
+        try:
+            parent_dir = img_path_obj.parent
+            if parent_dir.exists():
+                files = list(parent_dir.iterdir())
+                _log(f"[调试] 目录 {parent_dir} 中的文件: {[f.name for f in files[:10]]}", log_callback)
+        except Exception as e:
+            _log(f"[调试] 无法列出目录: {e}", log_callback)
         return False
 
-    template = cv2.imread(str(img_path), cv2.IMREAD_GRAYSCALE)
+    # 使用绝对路径字符串，cv2.imread需要字符串路径
+    img_path_str = str(img_path_obj.resolve())
+    _log(f"[调试] 尝试读取: {img_path_str}", log_callback)
+    # 尝试使用cv2读取
+    template = cv2.imread(img_path_str, cv2.IMREAD_GRAYSCALE)
     if template is None:
-        print(f"✗ 无法读取: {template_path}")
-        return False
+        # 如果cv2读取失败，尝试使用PIL读取
+        if HAS_PIL:
+            try:
+                _log(f"[调试] cv2读取失败，尝试使用PIL读取", log_callback)
+                pil_img = Image.open(img_path_str)
+                # 转换为灰度图
+                if pil_img.mode != 'L':
+                    pil_img = pil_img.convert('L')
+                # 转换为numpy数组
+                template = np.array(pil_img)
+                _log(f"[调试] PIL读取成功，图像尺寸: {template.shape}", log_callback)
+            except Exception as e:
+                _log(f"✗ 无法读取: {template_path}", log_callback)
+                _log(f"[调试] PIL读取也失败: {e}", log_callback)
+                return False
+        else:
+            _log(f"✗ 无法读取: {template_path}", log_callback)
+            _log(f"[调试] cv2.imread返回None，且PIL不可用", log_callback)
+            return False
 
     if template.shape[0] > height or template.shape[1] > width:
-        print(f"✗ 模板 {template_path} 大于搜索区域")
+        _log(f"✗ 模板 {template_path} 大于搜索区域", log_callback)
         return False
 
-    screenshot = pyautogui.screenshot(region=(left, top, width, height))
-    screen_array = np.array(screenshot)
-    screen_gray = cv2.cvtColor(screen_array, cv2.COLOR_RGB2GRAY)
+    # 截取屏幕指定区域（添加异常捕获）
+    try:
+        screenshot = pyautogui.screenshot(region=(left, top, width, height))
+        _log(f"[调试] 截图成功，尺寸: {screenshot.size}", log_callback)
+    except Exception as e:
+        _log(f"[错误] 截图失败: {e}", log_callback)
+        _log(f"[错误] 截图区域: left={left}, top={top}, width={width}, height={height}", log_callback)
+        import traceback
+        traceback.print_exc()
+        return False  # 截图失败，返回False
+    
+    try:
+        screen_array = np.array(screenshot)
+        screen_gray = cv2.cvtColor(screen_array, cv2.COLOR_RGB2GRAY)
+    except Exception as e:
+        _log(f"[错误] 图像处理失败: {e}", log_callback)
+        import traceback
+        traceback.print_exc()
+        return False  # 图像处理失败，返回False
 
     result = cv2.matchTemplate(screen_gray, template, cv2.TM_CCOEFF_NORMED)
     min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
 
     if max_val < MATCH_THRESHOLD:
-        print(f"✗ 未找到: {template_path} (最高分数 {max_val:.4f} < {MATCH_THRESHOLD})")
+        _log(f"✗ 未找到: {template_path} (最高分数 {max_val:.4f} < {MATCH_THRESHOLD})", log_callback)
         return False
 
     # 匹配框左上角在区域内的坐标
@@ -78,12 +162,12 @@ def find_image_and_click(template_path, region):
     click_x = left + match_x + tw // 2
     click_y = top + match_y + th // 2
 
-    print(f"✓ 找到 {template_path}，点击 ({click_x}, {click_y})")
+    _log(f"✓ 找到 {template_path}，点击 ({click_x}, {click_y})", log_callback)
     pyautogui.click(click_x, click_y)
     return True
 
 
-def find_image_in_region():
+def find_image_in_region(log_callback=None):
     """在指定区域内查找图片，使用OpenCV进行精确匹配
     返回找到的图片列表（可以找到同一张图片的多个不同位置）"""
     # 计算区域参数 (left, top, width, height)
@@ -93,35 +177,101 @@ def find_image_in_region():
     width = x2 - x1
     height = y2 - y1
     
-    print(f"搜索区域: ({left}, {top}, {width}, {height})")
+    # 调试：检测屏幕分辨率
+    try:
+        screen_size = pyautogui.size()
+        _log(f"[调试] 屏幕分辨率: {screen_size.width}x{screen_size.height}", log_callback)
+        if screen_size.width < width or screen_size.height < height:
+            _log(f"[警告] 屏幕分辨率({screen_size.width}x{screen_size.height})小于搜索区域({width}x{height})，可能导致截图失败", log_callback)
+    except Exception as e:
+        _log(f"[调试] 无法获取屏幕分辨率: {e}", log_callback)
     
-    # 截取屏幕指定区域
-    screenshot = pyautogui.screenshot(region=(left, top, width, height))
-    screen_array = np.array(screenshot)
-    screen_gray = cv2.cvtColor(screen_array, cv2.COLOR_RGB2GRAY)
+    _log(f"搜索区域: ({left}, {top}, {width}, {height})", log_callback)
+    
+    # 截取屏幕指定区域（添加异常捕获）
+    try:
+        screenshot = pyautogui.screenshot(region=(left, top, width, height))
+        _log(f"[调试] 截图成功，尺寸: {screenshot.size}", log_callback)
+        # 保存调试截图（可选，用于排查问题）
+        # screenshot.save("debug_screenshot.png")
+        # _log("[调试] 调试截图已保存为 debug_screenshot.png", log_callback)
+    except Exception as e:
+        _log(f"[错误] 截图失败: {e}", log_callback)
+        _log(f"[错误] 截图区域: left={left}, top={top}, width={width}, height={height}", log_callback)
+        import traceback
+        traceback.print_exc()
+        return []  # 截图失败，返回空列表
+    
+    try:
+        screen_array = np.array(screenshot)
+        screen_gray = cv2.cvtColor(screen_array, cv2.COLOR_RGB2GRAY)
+    except Exception as e:
+        _log(f"[错误] 图像处理失败: {e}", log_callback)
+        import traceback
+        traceback.print_exc()
+        return []  # 图像处理失败，返回空列表
     
     found_images = []  # 存储找到的图片信息
     
     # 遍历所有图片文件
     for img_file in IMAGE_FILES:
-        img_path = BASE_DIR / img_file
+        # 使用get_resource_path获取正确的资源路径（兼容打包）
+        img_path = get_resource_path(img_file)
+        img_path_obj = Path(img_path)
         
-        if not img_path.exists():
-            print(f"警告: 图片文件不存在 - {img_path}")
+        _log(f"正在查找: {img_file}", log_callback)
+        _log(f"[调试] 图片路径: {img_path}", log_callback)
+        _log(f"[调试] 路径是否存在: {img_path_obj.exists()}", log_callback)
+        
+        if not img_path_obj.exists():
+            _log(f"警告: 图片文件不存在 - {img_path}", log_callback)
+            # 尝试列出目录内容用于调试
+            try:
+                parent_dir = img_path_obj.parent
+                if parent_dir.exists():
+                    files = list(parent_dir.iterdir())
+                    _log(f"[调试] 目录 {parent_dir} 中的文件: {[f.name for f in files[:10]]}", log_callback)
+            except Exception as e:
+                _log(f"[调试] 无法列出目录: {e}", log_callback)
             continue
         
-        print(f"正在查找: {img_file}")
-        
         try:
-            # 读取模板图片
-            template = cv2.imread(str(img_path), cv2.IMREAD_GRAYSCALE)
+            # 读取模板图片（使用字符串路径，cv2.imread需要字符串）
+            img_path_str = str(img_path_obj.resolve())
+            _log(f"[调试] 尝试读取: {img_path_str}", log_callback)
+            # 检查文件大小
+            try:
+                file_size = img_path_obj.stat().st_size
+                _log(f"[调试] 文件大小: {file_size} 字节", log_callback)
+            except Exception as e:
+                _log(f"[调试] 无法获取文件信息: {e}", log_callback)
+            
+            # 尝试使用cv2读取
+            template = cv2.imread(img_path_str, cv2.IMREAD_GRAYSCALE)
             if template is None:
-                print(f"✗ 无法读取图片: {img_file}")
-                continue
+                # 如果cv2读取失败，尝试使用PIL读取
+                if HAS_PIL:
+                    try:
+                        _log(f"[调试] cv2读取失败，尝试使用PIL读取", log_callback)
+                        pil_img = Image.open(img_path_str)
+                        # 转换为灰度图
+                        if pil_img.mode != 'L':
+                            pil_img = pil_img.convert('L')
+                        # 转换为numpy数组
+                        template = np.array(pil_img)
+                        _log(f"[调试] PIL读取成功，图像尺寸: {template.shape}", log_callback)
+                    except Exception as e:
+                        _log(f"✗ 无法读取图片: {img_file}", log_callback)
+                        _log(f"[调试] PIL读取也失败: {e}", log_callback)
+                        continue
+                else:
+                    _log(f"✗ 无法读取图片: {img_file}", log_callback)
+                    _log(f"[调试] cv2.imread返回None，且PIL不可用", log_callback)
+                    continue
             
             # 检查模板是否大于搜索区域
             if template.shape[0] > height or template.shape[1] > width:
-                print(f"✗ 模板图片尺寸({template.shape[1]}x{template.shape[0]})大于搜索区域({width}x{height})")
+                _log(f"✗ 模板图片尺寸({template.shape[1]}x{template.shape[0]})大于搜索区域({width}x{height})", log_callback)
                 continue
             
             # 使用模板匹配
@@ -132,7 +282,7 @@ def find_image_in_region():
             matches = list(zip(*locations[::-1]))  # 转换为(x, y)坐标列表
             
             if len(matches) == 0:
-                print(f"✗ 未找到: {img_file} (无匹配位置超过阈值 {MATCH_THRESHOLD})")
+                _log(f"✗ 未找到: {img_file} (无匹配位置超过阈值 {MATCH_THRESHOLD})", log_callback)
                 continue
             
             # 过滤掉距离太近的重复匹配
@@ -169,18 +319,18 @@ def find_image_in_region():
             
             # 添加到结果列表
             for match in filtered_matches:
-                print(f"✓ 找到图片: {img_file}")
-                print(f"  位置: ({match['x']}, {match['y']})")
-                print(f"  匹配分数: {match['score']:.4f}")
+                _log(f"✓ 找到图片: {img_file}", log_callback)
+                _log(f"  位置: ({match['x']}, {match['y']})", log_callback)
+                _log(f"  匹配分数: {match['score']:.4f}", log_callback)
                 found_images.append(match)
             
             if len(filtered_matches) == 0:
-                print(f"✗ 未找到: {img_file} (所有匹配都被过滤为重复)")
+                _log(f"✗ 未找到: {img_file} (所有匹配都被过滤为重复)", log_callback)
             else:
-                print(f"  共找到 {len(filtered_matches)} 个不同位置的匹配")
+                _log(f"  共找到 {len(filtered_matches)} 个不同位置的匹配", log_callback)
                 
         except Exception as e:
-            print(f"✗ 查找 {img_file} 时出错: {e}")
+            _log(f"✗ 查找 {img_file} 时出错: {e}", log_callback)
             import traceback
             traceback.print_exc()
     
@@ -189,17 +339,15 @@ def find_image_in_region():
 
 def perform_click_sequence(log_callback=None):
     """执行点击序列：找图点击重设 -> 找图点击确认。log_callback(msg) 用于输出到 GUI 日志。"""
-    print("\n执行点击序列...")
+    _log("\n执行点击序列...", log_callback)
     # 1. 找图点击重设按钮
-    if not find_image_and_click("picture/btn_reset.png", BTN_RESET_REGION):
+    if not find_image_and_click("picture/btn_reset.png", BTN_RESET_REGION, log_callback):
         msg = '错误：未找到"重新设定"按钮，请确认是否打开怪怪页面并选择魔方！'
-        if log_callback:
-            log_callback(msg)
-        print(msg)
+        _log(msg, log_callback)
     time.sleep(0.1)
 
     # 2. 找图点击确认按钮
-    find_image_and_click("picture/btn_confirm.png", BTN_CONFIRM_REGION)
+    find_image_and_click("picture/btn_confirm.png", BTN_CONFIRM_REGION, log_callback)
     # 点击确认后将鼠标下移 100 像素
     x, y = pyautogui.position()
     pyautogui.moveTo(x, y + 100)

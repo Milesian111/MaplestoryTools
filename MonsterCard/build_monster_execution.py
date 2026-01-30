@@ -46,7 +46,7 @@ def run_monster_loop(stop_event, status_callback, log_callback=None, condition_f
     try:
         while not stop_event.is_set():
             find_count += 1
-            found_images = find_image_in_region()
+            found_images = find_image_in_region(log_callback=log_callback)
 
             final_count = sum(1 for img in found_images if img["file"] == "picture/final.png")
             monster_atk_count = sum(1 for img in found_images if img["file"] == "picture/monster_atk.png")
@@ -177,7 +177,7 @@ WIN_SIZE_WITH_LOG = "520x480"
 class MonsterAbilityApp:
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("好怪魔方")
+        self.root.title("好怪魔方test")
         self.root.geometry(WIN_SIZE_NORMAL)
         self.root.resizable(True, True)
         self.root.minsize(480, 180)

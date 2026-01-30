@@ -24,22 +24,10 @@ def get_version():
     # 首次或无效：使用 0.0.1
     return "0.0.1"
 
-# 版本号 +1 写回
-def bump_version():
-    if VERSION_FILE.exists():
-        raw = VERSION_FILE.read_text(encoding="utf-8").strip()
-        m = re.match(r"^(\d+)\.(\d+)\.(\d+)$", raw)
-        if m:
-            a, b, c = int(m.group(1)), int(m.group(2)), int(m.group(3))
-            next_ver = f"{a}.{b}.{c + 1}"
-            VERSION_FILE.write_text(next_ver + "\n", encoding="utf-8")
-        else:
-            VERSION_FILE.write_text("0.0.2\n", encoding="utf-8")
-    else:
-        VERSION_FILE.write_text("0.0.2\n", encoding="utf-8")
 
 VERSION = get_version()
-NAME = f"好怪魔方v{VERSION}"
+# 版本号格式保持为 1.0.0 格式（直接使用，不转换）
+NAME = f"好怪魔方testv{VERSION}"
 
 # Windows 下 PyInstaller --add-data 用分号，多个数据目录需要分别指定
 ENTRY = "build_monster_execution.py"
@@ -52,6 +40,8 @@ cmd = [
     "--windowed",          # 无控制台窗口（GUI 程序）
     "--uac-admin",         # 默认以管理员权限启动（UAC 会弹窗确认）
     "--hidden-import=keyboard",  # 全局热键，需一并打包
+    "--hidden-import=PIL",  # PIL/Pillow用于图片读取（作为cv2的备选）
+    "--hidden-import=PIL.Image",  # 确保PIL.Image被包含
     "--add-data=picture;picture",  # 打包picture目录
     "--add-data=sound;sound",      # 打包sound目录
     f"--name={NAME}",
@@ -64,7 +54,6 @@ result = subprocess.run(cmd, cwd=str(CUBE_DIR))
 
 # 打包完成后再修改版本号
 if result.returncode == 0:
-    bump_version()
-    print(f"打包成功！版本号已更新为下次打包准备。")
+    print(f"打包成功！")
 else:
-    print(f"打包失败，版本号未更新。")
+    print(f"打包失败。")
