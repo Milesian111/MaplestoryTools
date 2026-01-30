@@ -177,7 +177,7 @@ WIN_SIZE_WITH_LOG = "520x480"
 class MonsterAbilityApp:
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("好怪魔方test")
+        self.root.title("好怪魔方")
         self.root.geometry(WIN_SIZE_NORMAL)
         self.root.resizable(True, True)
         self.root.minsize(480, 180)
