@@ -18,6 +18,23 @@ except ImportError:
 from enchant_level import run_enchant_level_loop, find_image_and_click
 # 导入 enchant_ability 的核心逻辑
 from enchant_ability import find_image_in_region, perform_click_sequence
+import sys
+import os
+
+def get_resource_path(relative_path):
+    """获取资源文件的绝对路径，兼容PyInstaller打包后的exe"""
+    try:
+        # PyInstaller打包后会设置_MEIPASS属性
+        base_path = sys._MEIPASS
+    except Exception:
+        # 开发环境，使用脚本所在目录
+        base_path = os.path.abspath(os.path.dirname(__file__))
+    # 将相对路径中的正斜杠转换为系统路径分隔符
+    relative_path = relative_path.replace('/', os.sep).replace('\\', os.sep)
+    full_path = os.path.join(base_path, relative_path)
+    # 规范化路径（处理 .. 和 . 等）
+    full_path = os.path.normpath(full_path)
+    return full_path
 
 # 窗口尺寸常量
 WIN_SIZE_NORMAL = "500x300"
@@ -28,9 +45,10 @@ NOTICE_TEXT = """注意事项：
 1.请将冒冒窗口调至1366*768及以下
 2.请将冒冒窗口置于屏幕左上角（可用快捷键win + ←实现快速置于左上角）
 3.如有多个屏幕，请将冒冒窗口置于主屏左上角
-4.本软件不得用于商业用途,仅做学习交流
-5.未经允许，不得将本工具外传，不然你马又没了^_^
-6.6不6
+4.请始终保持冒冒窗口激活状态，不然会到处乱按空格
+5.本软件不得用于商业用途,仅做学习交流
+6.未经允许，不得将本工具外传，不然你马又没了^_^
+7.6不6
 """
 
 
@@ -71,11 +89,16 @@ class EnchantExecutionApp:
         self._cond16_var = tk.BooleanVar(value=False)  # 单魔智
         
         self._updating_cond2_state = False  # 防止递归更新
+        self._updating_cond1_13_state = False  # 防止递归更新（三攻/三魔）
         
         self._build_ui()
         self._bind_keys()
         self._register_global_hotkeys()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        
+        # 为三攻和三魔添加 trace，在变量变化前检查
+        self._cond1_var.trace_add("write", self._validate_cond1_13)
+        self._cond13_var.trace_add("write", self._validate_cond1_13)
 
     def _build_ui(self):
         main = ttk.Frame(self.root, padding=16)
@@ -121,7 +144,7 @@ class EnchantExecutionApp:
         )
         self._notice_text.tag_configure("red", foreground="red")
         self._notice_text.insert(tk.END, NOTICE_TEXT.strip())
-        for phrase in ("不得用于商业用途", "不得将本工具外传", "马又没了^_^"):
+        for phrase in ("窗口激活", "不得用于商业用途", "不得将本工具外传", "马又没了^_^"):
             start = self._notice_text.search(phrase, "1.0", tk.END)
             if start:
                 end = f"{start}+{len(phrase)}c"
@@ -187,14 +210,20 @@ class EnchantExecutionApp:
         
         # 左列：攻相关条件
         ttk.Label(conditions_left, text="攻相关条件：", font=("", 9, "bold")).pack(anchor=tk.W, pady=(0, 4))
-        ttk.Checkbutton(conditions_left, text="三攻", variable=self._cond1_var).pack(anchor=tk.W, pady=2)
+        self._cond1_check = ttk.Checkbutton(conditions_left, text="三攻", variable=self._cond1_var)
+        self._cond1_check.pack(anchor=tk.W, pady=2)
         self._cond2_check = ttk.Checkbutton(conditions_left, text="双攻", variable=self._cond2_var, command=self._on_cond2_toggle)
         self._cond2_check.pack(anchor=tk.W, pady=2)
-        ttk.Checkbutton(conditions_left, text="双攻全", variable=self._cond3_var).pack(anchor=tk.W, pady=2, padx=(20, 0))
-        ttk.Checkbutton(conditions_left, text="双攻力(全)", variable=self._cond4_var).pack(anchor=tk.W, pady=2, padx=(20, 0))
-        ttk.Checkbutton(conditions_left, text="双攻敏(全)", variable=self._cond5_var).pack(anchor=tk.W, pady=2, padx=(20, 0))
-        ttk.Checkbutton(conditions_left, text="双攻运(全)", variable=self._cond6_var).pack(anchor=tk.W, pady=2, padx=(20, 0))
-        ttk.Checkbutton(conditions_left, text="双攻血", variable=self._cond7_var).pack(anchor=tk.W, pady=2, padx=(20, 0))
+        self._cond3_check = ttk.Checkbutton(conditions_left, text="双攻全", variable=self._cond3_var)
+        self._cond3_check.pack(anchor=tk.W, pady=2, padx=(20, 0))
+        self._cond4_check = ttk.Checkbutton(conditions_left, text="双攻力(全)", variable=self._cond4_var)
+        self._cond4_check.pack(anchor=tk.W, pady=2, padx=(20, 0))
+        self._cond5_check = ttk.Checkbutton(conditions_left, text="双攻敏(全)", variable=self._cond5_var)
+        self._cond5_check.pack(anchor=tk.W, pady=2, padx=(20, 0))
+        self._cond6_check = ttk.Checkbutton(conditions_left, text="双攻运(全)", variable=self._cond6_var)
+        self._cond6_check.pack(anchor=tk.W, pady=2, padx=(20, 0))
+        self._cond7_check = ttk.Checkbutton(conditions_left, text="双攻血", variable=self._cond7_var)
+        self._cond7_check.pack(anchor=tk.W, pady=2, padx=(20, 0))
         ttk.Checkbutton(conditions_left, text="单攻全", variable=self._cond8_var).pack(anchor=tk.W, pady=2)
         ttk.Checkbutton(conditions_left, text="单攻力(全)", variable=self._cond9_var).pack(anchor=tk.W, pady=2)
         ttk.Checkbutton(conditions_left, text="单攻敏(全)", variable=self._cond10_var).pack(anchor=tk.W, pady=2)
@@ -203,11 +232,21 @@ class EnchantExecutionApp:
         
         # 右列：魔相关条件
         ttk.Label(conditions_right, text="魔相关条件：", font=("", 9, "bold")).pack(anchor=tk.W, pady=(0, 4))
-        ttk.Checkbutton(conditions_right, text="三魔", variable=self._cond13_var).pack(anchor=tk.W, pady=2)
+        self._cond13_check = ttk.Checkbutton(conditions_right, text="三魔", variable=self._cond13_var)
+        self._cond13_check.pack(anchor=tk.W, pady=2)
         self._cond14_check = ttk.Checkbutton(conditions_right, text="双魔", variable=self._cond14_var, command=self._on_cond14_toggle)
         self._cond14_check.pack(anchor=tk.W, pady=2)
-        ttk.Checkbutton(conditions_right, text="双魔智(全)", variable=self._cond15_var).pack(anchor=tk.W, pady=2, padx=(20, 0))
+        self._cond15_check = ttk.Checkbutton(conditions_right, text="双魔智(全)", variable=self._cond15_var)
+        self._cond15_check.pack(anchor=tk.W, pady=2, padx=(20, 0))
         ttk.Checkbutton(conditions_right, text="单魔智(全)", variable=self._cond16_var).pack(anchor=tk.W, pady=2)
+        
+        # 添加说明文字（无白色背景，字体大一号）
+        explanation_frame = ttk.Frame(conditions_right)
+        explanation_frame.pack(anchor=tk.W, pady=(112, 0), fill=tk.X)
+        ttk.Label(explanation_frame, text="说明：", font=("", 11, "bold")).pack(anchor=tk.W)
+        ttk.Label(explanation_frame, text="1.双攻X表示2条攻，1条对应属性", font=("", 11)).pack(anchor=tk.W, padx=(8, 0))
+        ttk.Label(explanation_frame, text="2.单攻X表示1条攻，2条对应属性", font=("", 11)).pack(anchor=tk.W, padx=(8, 0))
+        ttk.Label(explanation_frame, text="3.全属性会被同时视为力敏智运", font=("", 11)).pack(anchor=tk.W, padx=(8, 0))
 
         # 根据功能选择初始化属性选择按钮状态
         self._update_conditions_btn_state()
@@ -279,26 +318,60 @@ class EnchantExecutionApp:
         self._conditions_visible = False
         self._notice_frame.pack(fill=tk.BOTH, expand=True, pady=(12, 0))
     
+    def _validate_cond1_13(self, *args):
+        """验证三攻和三魔至少有一个被勾选"""
+        if self._updating_cond1_13_state:
+            return
+        if not self._cond1_var.get() and not self._cond13_var.get():
+            # 如果两个都未勾选，阻止取消操作
+            self._updating_cond1_13_state = True
+            # 恢复之前的状态（假设用户刚刚取消的是当前正在变化的那个）
+            # 由于我们不知道是哪个被取消了，我们需要检查哪个变量刚刚变化
+            # 简单方法：如果两个都未勾选，默认恢复"三攻"
+            self._cond1_var.set(True)
+            messagebox.showwarning("警告", "必须勾选\"三攻\"或\"三魔\"其中之一！")
+            self._updating_cond1_13_state = False
+    
     def _on_cond2_toggle(self):
-        """双攻勾选时，自动勾选双攻全、双攻力、双攻敏、双攻运、双攻血"""
+        """双攻勾选时，自动勾选双攻全、双攻力、双攻敏、双攻运、双攻血，并禁用这些子条件"""
         if self._updating_cond2_state:
             return
         self._updating_cond2_state = True
         if self._cond2_var.get():
+            # 勾选所有子条件
             self._cond3_var.set(True)  # 双攻全
             self._cond4_var.set(True)  # 双攻力
             self._cond5_var.set(True)  # 双攻敏
             self._cond6_var.set(True)  # 双攻运
             self._cond7_var.set(True)  # 双攻血
+            # 禁用所有子条件的复选框
+            self._cond3_check.config(state=tk.DISABLED)
+            self._cond4_check.config(state=tk.DISABLED)
+            self._cond5_check.config(state=tk.DISABLED)
+            self._cond6_check.config(state=tk.DISABLED)
+            self._cond7_check.config(state=tk.DISABLED)
+        else:
+            # 取消勾选时，启用所有子条件的复选框
+            self._cond3_check.config(state=tk.NORMAL)
+            self._cond4_check.config(state=tk.NORMAL)
+            self._cond5_check.config(state=tk.NORMAL)
+            self._cond6_check.config(state=tk.NORMAL)
+            self._cond7_check.config(state=tk.NORMAL)
         self._updating_cond2_state = False
     
     def _on_cond14_toggle(self):
-        """双魔勾选时，自动勾选双魔智"""
+        """双魔勾选时，自动勾选双魔智，并禁用这个子条件"""
         if self._updating_cond2_state:
             return
         self._updating_cond2_state = True
         if self._cond14_var.get():
+            # 勾选子条件
             self._cond15_var.set(True)  # 双魔智
+            # 禁用子条件的复选框
+            self._cond15_check.config(state=tk.DISABLED)
+        else:
+            # 取消勾选时，启用子条件的复选框
+            self._cond15_check.config(state=tk.NORMAL)
         self._updating_cond2_state = False
 
     def _toggle_log(self):
@@ -399,6 +472,13 @@ class EnchantExecutionApp:
         selected_function = self._function_var.get()
         
         if selected_function == "洗属性":
+            # 检查三攻和三魔是否至少勾选其中一个
+            cond1_checked = self._cond1_var.get()  # 三攻
+            cond13_checked = self._cond13_var.get()  # 三魔
+            if not cond1_checked and not cond13_checked:
+                messagebox.showwarning("警告", "必须勾选\"三攻\"或\"三魔\"其中之一！")
+                return
+            
             # 检查是否至少选择了一个终止条件
             has_condition = (
                 self._cond1_var.get() or self._cond2_var.get() or self._cond3_var.get() or
@@ -415,7 +495,9 @@ class EnchantExecutionApp:
         # 在开始执行前，先查找并点击 window_flag.png
         # 使用静默的 log_callback 避免输出详细日志
         silent_log = lambda msg: None
-        found = find_image_and_click('picture/window_flag.png', log_callback=silent_log)
+        # 使用 get_resource_path 获取正确的资源路径（兼容打包）
+        window_flag_path = get_resource_path('picture/window_flag.png')
+        found = find_image_and_click(window_flag_path, log_callback=silent_log)
         if not found:
             self._log_callback("错误，未找到内衬窗口，任务停止！")
             self.status_var.set("错误，未找到内衬窗口，任务停止！")
