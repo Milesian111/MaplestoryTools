@@ -12,6 +12,13 @@ try:
 except ImportError:
     HAS_PIL = False
 
+# 尝试导入 keyboard 库用于发送按键（更可靠）
+try:
+    import keyboard
+    HAS_KEYBOARD = True
+except ImportError:
+    HAS_KEYBOARD = False
+
 def get_resource_path(relative_path):
     """获取资源文件的绝对路径，兼容PyInstaller打包后的exe"""
     try:
@@ -232,15 +239,17 @@ def find_image_in_region(log_callback=None):
 
 
 def perform_click_sequence(log_callback=None):
-    """执行点击序列：找图点击重设 -> 找图点击确认。log_callback(msg) 用于输出到 GUI 日志。"""
-    # 1. 找图点击重设按钮
-    if not find_image_and_click("picture/reset_enchant.png", BTN_RESET_REGION, log_callback):
-        if log_callback:
-            log_callback('错误：未找到"重新设定"按钮，请确认是否打开附魔页面！')
+    """执行点击序列：按两次空格（与 enchant_level 一致）"""
+    # 1. 按第一次空格
+    if HAS_KEYBOARD:
+        keyboard.press_and_release('space')
+    else:
+        pyautogui.press('space')
     time.sleep(0.1)
 
-    # 2. 找图点击确认按钮
-    find_image_and_click("picture/confirm_enchant.png", BTN_CONFIRM_REGION, log_callback)
-    # 点击确认后将鼠标右移 100 像素
-    pyautogui.moveRel(100, 0)
+    # 2. 0.1秒后按第二次空格
+    if HAS_KEYBOARD:
+        keyboard.press_and_release('space')
+    else:
+        pyautogui.press('space')
     time.sleep(1.5)  # 1.5秒后再次找图

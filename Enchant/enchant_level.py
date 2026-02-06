@@ -172,7 +172,7 @@ def run_enchant_level_loop(stop_event, status_callback, log_callback=None):
             found = find_image_in_region(log_callback=log_callback)
             
             if found:
-                winsound.Beep(1000, 1000)  # 频率1000Hz，持续时间1000ms
+                winsound.Beep(1000, 300)  # 频率1000Hz，持续时间300ms
                 status_callback("已找到目标图片，任务完成")
                 break
             else:

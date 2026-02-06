@@ -6,6 +6,7 @@
 每次运行会将版本号 +1（如 0.0.1 -> 0.0.2），并写入 build_version.txt 供下次使用。
 """
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -65,9 +66,17 @@ cmd = [
 # 执行打包
 result = subprocess.run(cmd, cwd=str(CUBE_DIR))
 
-# 打包完成后再修改版本号
+# 打包完成后再修改版本号，并删除中间文件
 if result.returncode == 0:
     bump_version()
+    # 删除 build 文件夹和 spec 文件
+    build_dir = CUBE_DIR / "build"
+    if build_dir.exists():
+        shutil.rmtree(build_dir)
+        print("已删除 build 文件夹")
+    for spec in CUBE_DIR.glob("*.spec"):
+        spec.unlink()
+        print(f"已删除 {spec.name}")
     print(f"打包成功！版本号已更新为下次打包准备。")
 else:
     print(f"打包失败，版本号未更新。")

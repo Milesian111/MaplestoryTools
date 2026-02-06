@@ -5,7 +5,9 @@
 （keyboard 用于全局 F11/F12 热键，未安装则仅窗口内有效）
 每次运行会将版本号 +1（如 0.0.1 -> 0.0.2），并写入 build_version.txt 供下次使用。
 """
+
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -39,13 +41,13 @@ def bump_version():
         VERSION_FILE.write_text("0.0.2\n", encoding="utf-8")
 
 VERSION = get_version()
-NAME = f"好内搭-测试版v{VERSION}"
+NAME = f"好内搭v{VERSION}"
 
 # Windows 下 PyInstaller --add-data 用分号，多个数据目录需要分别指定
 ENTRY = "build_enchant_execution.py"
 
 # 检查是否有图标文件（可选）
-icon_path = ENCHANT_DIR / "icon" / "icon1.png"
+icon_path = ENCHANT_DIR / "icon" / "icon_enchant1.png"
 icon_args = []
 if icon_path.exists():
     icon_args = [f"--icon={icon_path}"]
@@ -69,9 +71,17 @@ cmd = [
 # 执行打包
 result = subprocess.run(cmd, cwd=str(ENCHANT_DIR))
 
-# 打包完成后再修改版本号
+# 打包完成后再修改版本号，并删除中间文件
 if result.returncode == 0:
     bump_version()
+    # 删除 build 文件夹和 spec 文件
+    build_dir = ENCHANT_DIR / "build"
+    if build_dir.exists():
+        shutil.rmtree(build_dir)
+        print("已删除 build 文件夹")
+    for spec in ENCHANT_DIR.glob("*.spec"):
+        spec.unlink()
+        print(f"已删除 {spec.name}")
     print(f"打包成功！版本号已更新为下次打包准备。")
 else:
     print(f"打包失败，版本号未更新。")
