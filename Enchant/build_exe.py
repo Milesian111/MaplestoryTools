@@ -1,7 +1,7 @@
 """
-运行此脚本可将 build_monster_execution.py 打包为 exe。
+运行此脚本可将 build_enchant_execution.py 打包为 exe。
 需要先安装：pip install pyinstaller keyboard
-在 Cube 目录下执行：python build_exe.py
+在 enchant 目录下执行：python build_exe.py
 （keyboard 用于全局 F11/F12 热键，未安装则仅窗口内有效）
 每次运行会将版本号 +1（如 0.0.1 -> 0.0.2），并写入 build_version.txt 供下次使用。
 """
@@ -10,9 +10,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Cube 目录（本脚本所在目录）
-CUBE_DIR = Path(__file__).resolve().parent
-VERSION_FILE = CUBE_DIR / "build_version.txt"
+# enchant 目录（本脚本所在目录）
+ENCHANT_DIR = Path(__file__).resolve().parent
+VERSION_FILE = ENCHANT_DIR / "build_version.txt"
 
 # 读当前版本（格式 0.0.1）
 def get_version():
@@ -39,10 +39,16 @@ def bump_version():
         VERSION_FILE.write_text("0.0.2\n", encoding="utf-8")
 
 VERSION = get_version()
-NAME = f"好怪魔方v{VERSION}"
+NAME = f"好内搭-测试版v{VERSION}"
 
 # Windows 下 PyInstaller --add-data 用分号，多个数据目录需要分别指定
-ENTRY = "build_monster_execution.py"
+ENTRY = "build_enchant_execution.py"
+
+# 检查是否有图标文件（可选）
+icon_path = ENCHANT_DIR / "icon" / "icon1.png"
+icon_args = []
+if icon_path.exists():
+    icon_args = [f"--icon={icon_path}"]
 
 cmd = [
     sys.executable,
@@ -55,15 +61,13 @@ cmd = [
     "--hidden-import=PIL",  # 确保PIL被包含
     "--hidden-import=PIL.Image",  # 确保PIL.Image被包含
     "--add-data=picture;picture",  # 打包picture目录
-    "--add-data=sound;sound",      # 打包sound目录
-    f"--icon={CUBE_DIR / 'icon' / 'icon1.png'}",  # 设置图标
     f"--name={NAME}",
     "--clean",
-    str(CUBE_DIR / ENTRY),
-]
+    str(ENCHANT_DIR / ENTRY),
+] + icon_args  # 如果有图标则添加
 
 # 执行打包
-result = subprocess.run(cmd, cwd=str(CUBE_DIR))
+result = subprocess.run(cmd, cwd=str(ENCHANT_DIR))
 
 # 打包完成后再修改版本号
 if result.returncode == 0:
@@ -71,3 +75,4 @@ if result.returncode == 0:
     print(f"打包成功！版本号已更新为下次打包准备。")
 else:
     print(f"打包失败，版本号未更新。")
+

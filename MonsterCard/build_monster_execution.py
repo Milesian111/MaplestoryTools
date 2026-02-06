@@ -15,7 +15,7 @@ except ImportError:
     HAS_KEYBOARD = False
 
 # 导入 monster_ability 的核心逻辑
-from monster_ability import find_image_in_region, perform_click_sequence
+from monster_ability import find_image_in_region, perform_click_sequence, check_image_exists
 import winsound
 from pathlib import Path
 import sys
@@ -35,13 +35,20 @@ def get_resource_path(relative_path):
 def run_monster_loop(stop_event, status_callback, log_callback=None, condition_flags=None):
     """在后台线程中执行 monster_ability 的主循环，遇 stop_event 或满足终止条件时退出。
     condition_flags: (enable_c2, enable_c3, enable_c4, enable_c5, enable_c6, enable_c7, c3_sub_flags)，condition1 始终启用。
-    c3_sub_flags: (enable_c3_1, enable_c3_2, ..., enable_c3_11) 条件3的11个子条件"""
+    c3_sub_flags: (enable_c3_1, enable_c3_2, ..., enable_c3_12) 条件3的12个子条件"""
     if log_callback is None:
         log_callback = lambda msg: None
     if condition_flags is None:
-        condition_flags = (True, False, True, True, True, True, (True,)*11)  # c2=True, c3=False, c4=True, c5=True, c6=True, c7=True, c3_sub全部True
+        condition_flags = (True, False, True, True, True, True, (True,)*12)  # c2=True, c3=False, c4=True, c5=True, c6=True, c7=True, c3_sub全部True
     enable_c2, enable_c3, enable_c4, enable_c5, enable_c6, enable_c7, c3_sub_flags = condition_flags
-    enable_c3_1, enable_c3_2, enable_c3_3, enable_c3_4, enable_c3_5, enable_c3_6, enable_c3_7, enable_c3_8, enable_c3_9, enable_c3_10, enable_c3_11 = c3_sub_flags
+    enable_c3_1, enable_c3_2, enable_c3_3, enable_c3_4, enable_c3_5, enable_c3_6, enable_c3_7, enable_c3_8, enable_c3_9, enable_c3_10, enable_c3_11, enable_c3_12 = c3_sub_flags
+    
+    # 在开始循环前，检查是否找到强化动画图片
+    if check_image_exists("picture/graphic.png", log_callback=log_callback):
+        log_callback("错误：请关闭强化动画！")
+        status_callback("错误：请关闭强化动画！")
+        return
+    
     find_count = 0
     try:
         while not stop_event.is_set():
@@ -93,7 +100,7 @@ def run_monster_loop(stop_event, status_callback, log_callback=None, condition_f
             condition1 = final_count >= 3  # 三终（必选）
             condition2 = final_count >= 2  # 双终0
             
-            # 条件3的11个子条件
+            # 条件3的12个子条件
             condition3_1 = condition2 and monster_atk_count >= 1  # 双终攻
             condition3_2 = condition2 and monster_magic_count >= 1  # 双终魔
             condition3_3 = condition2 and monster_all_count >= 1  # 双终全
@@ -105,6 +112,7 @@ def run_monster_loop(stop_event, status_callback, log_callback=None, condition_f
             condition3_9 = condition2 and monster_hp_count >= 1  # 双终血
             condition3_10 = condition2 and monster_ignore_count >= 1  # 双终无视
             condition3_11 = condition2 and monster_buff_count >= 1  # 双终buff
+            condition3_12 = condition2 and skill_2_count >= 1  # 双终被
             
             # 条件3：所有启用的子条件的并集
             condition3 = (
@@ -118,7 +126,8 @@ def run_monster_loop(stop_event, status_callback, log_callback=None, condition_f
                 (condition3_8 and enable_c3_8) or
                 (condition3_9 and enable_c3_9) or
                 (condition3_10 and enable_c3_10) or
-                (condition3_11 and enable_c3_11)
+                (condition3_11 and enable_c3_11) or
+                (condition3_12 and enable_c3_12)
             )
             
             condition4 = (monster_atk_count >= 2 or monster_magic_count >= 2) and skill_2_count >= 1  # 双攻被、双魔被
@@ -170,7 +179,7 @@ def run_monster_loop(stop_event, status_callback, log_callback=None, condition_f
 # 窗口尺寸（初始高度拉大）
 WIN_SIZE_NORMAL = "520x250"
 WIN_SIZE_WITH_CONDITIONS = "520x370"  # 选择终止条件时拉高（增加了高度以容纳条件3的子条件）
-WIN_SIZE_WITH_CONDITIONS_EXPANDED = "520x600"  # 条件3展开时的窗口高度
+WIN_SIZE_WITH_CONDITIONS_EXPANDED = "520x700"  # 条件3展开时的窗口高度
 WIN_SIZE_WITH_LOG = "520x480"
 
 
@@ -194,7 +203,7 @@ class MonsterAbilityApp:
         self._cond6_var = tk.BooleanVar(value=True)
         self._cond7_var = tk.BooleanVar(value=True)
         
-        # 条件3的11个子条件
+        # 条件3的12个子条件
         self._cond3_1_var = tk.BooleanVar(value=True)  # 双终攻
         self._cond3_2_var = tk.BooleanVar(value=True)  # 双终魔
         self._cond3_3_var = tk.BooleanVar(value=True)  # 双终全
@@ -206,6 +215,7 @@ class MonsterAbilityApp:
         self._cond3_9_var = tk.BooleanVar(value=True)  # 双终血
         self._cond3_10_var = tk.BooleanVar(value=True)  # 双终无视
         self._cond3_11_var = tk.BooleanVar(value=True)  # 双终buff
+        self._cond3_12_var = tk.BooleanVar(value=True)  # 双终被
         
         # 条件3子条件展开状态
         self._cond3_expanded = False
@@ -291,15 +301,15 @@ class MonsterAbilityApp:
         self._cond3_expand_btn = ttk.Button(cond3_frame, text="▼", width=3, command=self._toggle_cond3_expand)
         self._cond3_expand_btn.pack(side=tk.LEFT, padx=(4, 0))
         
-        # 条件3的11个子条件（默认隐藏）
+        # 条件3的12个子条件（默认隐藏）
         self._cond3_sub_frame = ttk.Frame(cf)
         # 不pack，由_toggle_cond3_expand控制
         
-        # 创建11个子条件的复选框
-        sub_labels = ["双终攻", "双终魔", "双终全", "双终力", "双终敏", "双终智", "双终运", "双终爆", "双终血", "双终无视", "双终buff"]
+        # 创建12个子条件的复选框
+        sub_labels = ["双终攻", "双终魔", "双终全", "双终力", "双终敏", "双终智", "双终运", "双终爆", "双终血", "双终无视", "双终buff", "双终被"]
         sub_vars = [self._cond3_1_var, self._cond3_2_var, self._cond3_3_var, self._cond3_4_var,
                     self._cond3_5_var, self._cond3_6_var, self._cond3_7_var, self._cond3_8_var, self._cond3_9_var,
-                    self._cond3_10_var, self._cond3_11_var]
+                    self._cond3_10_var, self._cond3_11_var, self._cond3_12_var]
         self._cond3_sub_checks = []
         for label, var in zip(sub_labels, sub_vars):
             check = ttk.Checkbutton(self._cond3_sub_frame, text=label, variable=var)
@@ -400,7 +410,7 @@ class MonsterAbilityApp:
                 # 确保所有子条件都勾选
                 sub_vars = [self._cond3_1_var, self._cond3_2_var, self._cond3_3_var, self._cond3_4_var,
                             self._cond3_5_var, self._cond3_6_var, self._cond3_7_var, self._cond3_8_var, self._cond3_9_var,
-                            self._cond3_10_var, self._cond3_11_var]
+                            self._cond3_10_var, self._cond3_11_var, self._cond3_12_var]
                 for var in sub_vars:
                     var.set(True)
                 # 禁用所有子条件的复选框
@@ -437,7 +447,7 @@ class MonsterAbilityApp:
         try:
             sub_vars = [self._cond3_1_var, self._cond3_2_var, self._cond3_3_var, self._cond3_4_var,
                         self._cond3_5_var, self._cond3_6_var, self._cond3_7_var, self._cond3_8_var, self._cond3_9_var,
-                        self._cond3_10_var, self._cond3_11_var]
+                        self._cond3_10_var, self._cond3_11_var, self._cond3_12_var]
             enabled_count = sum(1 for var in sub_vars if var.get())
             total_count = len(sub_vars)
             
@@ -469,7 +479,7 @@ class MonsterAbilityApp:
         try:
             sub_vars = [self._cond3_1_var, self._cond3_2_var, self._cond3_3_var, self._cond3_4_var,
                         self._cond3_5_var, self._cond3_6_var, self._cond3_7_var, self._cond3_8_var, self._cond3_9_var,
-                        self._cond3_10_var, self._cond3_11_var]
+                        self._cond3_10_var, self._cond3_11_var, self._cond3_12_var]
             if self._cond3_var.get():
                 # 如果条件3被勾选，且所有子条件都未勾选，则全部勾选
                 if not any(var.get() for var in sub_vars):
@@ -581,6 +591,7 @@ class MonsterAbilityApp:
             self._cond3_9_var.get(),
             self._cond3_10_var.get(),
             self._cond3_11_var.get(),
+            self._cond3_12_var.get(),
         )
         condition_flags = (
             self._cond2_var.get(),

@@ -12,13 +12,8 @@ BASE_DIR = Path(__file__).parent
 SEARCH_REGION = (0, 0, 1366, 768)
 
 IMAGE_FILES = [
-    'picture/all5.png',
-    'picture/all6.png',
-    'picture/str1.png',
-    'picture/str2.png',
-    'picture/str6.png',
-    'picture/str8.png',
-    'picture/cri1.png'
+    'picture/dex2.png',
+    'picture/dex8.png'
 ]
 
 # 匹配阈值（0-1之间，越高越严格，建议0.95以上）
@@ -145,13 +140,13 @@ def perform_click_sequence():
     time.sleep(0.1)
     
     # 2. 0.1秒后单击640,464
-    print("点击 (640, 464)")
-    pyautogui.click(640, 464)
+    print("点击 (470, 464)")
+    pyautogui.click(470, 464)
     time.sleep(0.1)
     
     # 3. 0.1秒后单击640,474
-    print("点击 (640, 474)")
-    pyautogui.click(640, 474)
+    print("点击 (470, 474)")
+    pyautogui.click(470, 474)
     time.sleep(1.5)  # 等待1秒后再次查找图片
 
 

@@ -12,17 +12,17 @@ BASE_DIR = Path(__file__).parent
 SEARCH_REGION = (0, 0, 1366, 768)
 
 IMAGE_FILES = [
-    'picture/all_enchant.png',
-    'picture/str_enchant.png',
-    'picture/atk_enchant.png'
+    'picture/allx1.png',
+    'picture/allx2.png',
+    'picture/strx2.png',
+    'picture/strx3.png'
 ]
 
 # 匹配阈值（0-1之间，越高越严格，建议0.95以上）
 MATCH_THRESHOLD = 0.99
 
-# 需要找到的匹配次数（找到3个不同位置，或者找到2个atk_enchant.png才停止）
+# 需要找到的匹配次数（找到3个不同位置才停止，可以是同一张图片的不同位置）
 REQUIRED_MATCH_COUNT = 3
-REQUIRED_ATK_ENCHANT_COUNT = 2
 
 # 最小匹配距离（像素），用于过滤重复匹配
 MIN_MATCH_DISTANCE = 10
@@ -136,49 +136,41 @@ def find_image_in_region():
 def perform_click_sequence():
     """执行点击序列"""
     print("\n执行点击序列...")
-    # 1. 鼠标左键单击397,752
-    print("点击 (397, 752)")
-    pyautogui.click(397, 752)
+    # 1. 鼠标左键单击390,749
+    print("点击 (390, 749)")
+    pyautogui.click(390, 749)
     time.sleep(0.1)
     
-    # 2. 0.1秒后单击646,466
-    print("点击 (646, 466)")
-    pyautogui.click(646, 466)
-    time.sleep(1.5)  # 等待1.5秒后再次查找图片
+    # 2. 0.1秒后单击640,464
+    print("点击 (640, 464)")
+    pyautogui.click(640, 464)
+    time.sleep(0.1)
+    
+    # 3. 0.1秒后单击640,474
+    print("点击 (640, 474)")
+    pyautogui.click(640, 474)
+    time.sleep(1.5)  # 等待1秒后再次查找图片
 
 
 if __name__ == "__main__":
     print("开始查找图片...")
-    print(f"停止条件：")
-    print(f"  1. 找到 {REQUIRED_MATCH_COUNT} 个不同位置的任意图片，且至少包含 1 个 atk_enchant.png")
-    print(f"  2. 或者找到 {REQUIRED_ATK_ENCHANT_COUNT} 个 atk_enchant.png\n")
+    print(f"需要找到 {REQUIRED_MATCH_COUNT} 次及以上匹配才会停止")
+    print(f"（可以是同一张图片的不同位置，或不同图片）\n")
     
     while True:
         # 查找图片
         found_images = find_image_in_region()
         found_count = len(found_images)
         
-        # 统计 atk_enchant.png 的匹配数
-        atk_enchant_count = sum(1 for img in found_images if img['file'] == 'picture/atk_enchant.png')
-        
         print(f"\n找到 {found_count} 次匹配")
-        print(f"其中 atk_enchant.png: {atk_enchant_count} 次")
         
-        # 判断是否满足停止条件
-        # 条件1：找到3个不同位置的任意图片，且至少包含1个atk_enchant.png
-        # 条件2：找到2个 atk_enchant.png
-        condition1_met = found_count >= REQUIRED_MATCH_COUNT and atk_enchant_count >= 1
-        condition2_met = atk_enchant_count >= REQUIRED_ATK_ENCHANT_COUNT
-        
-        if condition1_met or condition2_met:
-            if condition1_met:
-                print(f"✓ 找到 {found_count} 个不同位置的匹配（包含 {atk_enchant_count} 个 atk_enchant.png），达到阈值，停止任务")
-            if condition2_met:
-                print(f"✓ 找到 {atk_enchant_count} 个 atk_enchant.png，达到阈值 {REQUIRED_ATK_ENCHANT_COUNT}，停止任务")
-            winsound.Beep(1000, 1000)  # 频率1000Hz，持续时间1000ms
+        # 如果找到3个不同位置，beep并停止
+        if found_count >= REQUIRED_MATCH_COUNT:
+            print(f"✓ 找到 {found_count} 个不同位置的匹配，达到阈值 {REQUIRED_MATCH_COUNT}，停止任务")
+            winsound.Beep(1000, 1000)  # 频率1000Hz，持续时间200ms
             break
         else:
-            print(f"✗ 未满足停止条件（需要 {REQUIRED_MATCH_COUNT} 个任意匹配且至少1个atk_enchant，或 {REQUIRED_ATK_ENCHANT_COUNT} 个 atk_enchant.png），继续循环")
+            print(f"✗ 只找到 {found_count} 次匹配，未达到阈值 {REQUIRED_MATCH_COUNT}，继续循环")
             # 执行点击序列
             perform_click_sequence()
             print("\n" + "="*50 + "\n")
