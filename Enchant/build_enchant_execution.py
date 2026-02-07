@@ -55,7 +55,7 @@ NOTICE_TEXT = """注意事项：
 class EnchantExecutionApp:
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("好内搭")
+        self.root.title("好内搭Test")
         self.root.geometry(WIN_SIZE_NORMAL)
         
         self.stop_event = threading.Event()
