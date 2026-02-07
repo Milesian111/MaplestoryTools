@@ -58,9 +58,22 @@ def find_image_in_region(log_callback=None):
         screen_gray = cv2.cvtColor(screen_array, cv2.COLOR_RGB2GRAY)
         
         # 读取模板图片
-        template = cv2.imread(str(img_path), cv2.IMREAD_GRAYSCALE)
+        img_path_str = str(img_path.resolve())
+        template = cv2.imread(img_path_str, cv2.IMREAD_GRAYSCALE)
         if template is None:
-            return False
+            # 如果cv2读取失败，尝试使用PIL读取
+            if HAS_PIL:
+                try:
+                    pil_img = Image.open(img_path_str)
+                    # 转换为灰度图
+                    if pil_img.mode != 'L':
+                        pil_img = pil_img.convert('L')
+                    # 转换为numpy数组
+                    template = np.array(pil_img)
+                except Exception:
+                    return False
+            else:
+                return False
         
         # 检查模板是否大于搜索区域
         if template.shape[0] > height or template.shape[1] > width:
