@@ -40,7 +40,7 @@ def bump_version():
         VERSION_FILE.write_text("0.0.2\n", encoding="utf-8")
 
 VERSION = get_version()
-NAME = f"好怪魔方v{VERSION}"
+NAME = f"好怪魔方Test"
 
 # Windows 下 PyInstaller --add-data 用分号，多个数据目录需要分别指定
 ENTRY = "build_monster_execution.py"

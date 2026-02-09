@@ -43,7 +43,20 @@ def run_monster_loop(stop_event, status_callback, log_callback=None, condition_f
     enable_c2, enable_c3, enable_c4, enable_c5, enable_c6, enable_c7, c3_sub_flags = condition_flags
     enable_c3_1, enable_c3_2, enable_c3_3, enable_c3_4, enable_c3_5, enable_c3_6, enable_c3_7, enable_c3_8, enable_c3_9, enable_c3_10, enable_c3_11, enable_c3_12 = c3_sub_flags
     
+    log_callback(f"[调试] ========== 开始怪物能力循环 ==========")
+    log_callback(f"[调试] 匹配阈值: 0.95")
+    log_callback(f"[调试] 搜索区域: (0, 0, 1366, 768)")
+    log_callback(f"[调试] 条件标志: c2={enable_c2}, c3={enable_c3}, c4={enable_c4}, c5={enable_c5}, c6={enable_c6}, c7={enable_c7}")
+    log_callback(f"[调试] 条件3子标志: c3_1={enable_c3_1}, c3_2={enable_c3_2}, c3_3={enable_c3_3}, c3_4={enable_c3_4}, c3_5={enable_c3_5}, c3_6={enable_c3_6}")
+    log_callback(f"[调试] 条件3子标志: c3_7={enable_c3_7}, c3_8={enable_c3_8}, c3_9={enable_c3_9}, c3_10={enable_c3_10}, c3_11={enable_c3_11}, c3_12={enable_c3_12}")
+    try:
+        meipass = sys._MEIPASS
+        log_callback(f"[调试] sys._MEIPASS: {meipass}")
+    except:
+        log_callback(f"[调试] sys._MEIPASS: 未设置（开发环境）")
+    
     # 在开始循环前，检查是否找到强化动画图片
+    log_callback(f"[调试] 检查强化动画图片...")
     if check_image_exists("picture/graphic.png", log_callback=log_callback):
         log_callback("错误：请关闭强化动画！")
         status_callback("错误：请关闭强化动画！")
@@ -53,6 +66,7 @@ def run_monster_loop(stop_event, status_callback, log_callback=None, condition_f
     try:
         while not stop_event.is_set():
             find_count += 1
+            log_callback(f"[调试] ========== 第 {find_count} 次循环开始 ==========")
             found_images = find_image_in_region(log_callback=log_callback)
 
             final_count = sum(1 for img in found_images if img["file"] == "picture/final.png")
@@ -97,6 +111,11 @@ def run_monster_loop(stop_event, status_callback, log_callback=None, condition_f
                 result_parts = [f"{count}{name}" for count, name in found_items]
                 log_callback(f"第{find_count}次，找到{'、'.join(result_parts)}")
 
+            log_callback(f"[调试] 统计各图片数量:")
+            log_callback(f"[调试]   终: {final_count}, 攻: {monster_atk_count}, 魔: {monster_magic_count}, 被: {skill_2_count}")
+            log_callback(f"[调试]   全: {monster_all_count}, 力: {monster_str_count}, 敏: {monster_dex_count}, 智: {monster_int_count}")
+            log_callback(f"[调试]   运: {monster_luk_count}, 爆: {monster_cri_count}, 血: {monster_hp_count}, 无视: {monster_ignore_count}, buff: {monster_buff_count}")
+            
             condition1 = final_count >= 3  # 三终（必选）
             condition2 = final_count >= 2  # 双终0
             
@@ -113,6 +132,12 @@ def run_monster_loop(stop_event, status_callback, log_callback=None, condition_f
             condition3_10 = condition2 and monster_ignore_count >= 1  # 双终无视
             condition3_11 = condition2 and monster_buff_count >= 1  # 双终buff
             condition3_12 = condition2 and skill_2_count >= 1  # 双终被
+            
+            log_callback(f"[调试] 条件判断结果:")
+            log_callback(f"[调试]   条件1(三终): {condition1}")
+            log_callback(f"[调试]   条件2(双终): {condition2}")
+            log_callback(f"[调试]   条件3子条件: c3_1={condition3_1}, c3_2={condition3_2}, c3_3={condition3_3}, c3_4={condition3_4}, c3_5={condition3_5}, c3_6={condition3_6}")
+            log_callback(f"[调试]   条件3子条件: c3_7={condition3_7}, c3_8={condition3_8}, c3_9={condition3_9}, c3_10={condition3_10}, c3_11={condition3_11}, c3_12={condition3_12}")
             
             # 条件3：所有启用的子条件的并集
             condition3 = (
@@ -139,8 +164,13 @@ def run_monster_loop(stop_event, status_callback, log_callback=None, condition_f
             )  # 终攻被、终魔被
             condition7 = monster_atk_count >= 3 or monster_magic_count >= 3  # 三攻、三魔
 
+            log_callback(f"[调试]   条件3(综合): {condition3}, 条件4: {condition4}, 条件5: {condition5}, 条件6: {condition6}, 条件7: {condition7}")
+
             satisfied = condition1 or (condition2 and enable_c2) or (condition3 and enable_c3) or (condition4 and enable_c4) or (condition5 and enable_c5) or (condition6 and enable_c6) or (condition7 and enable_c7)
+            log_callback(f"[调试] 是否满足终止条件: {satisfied}")
+            
             if satisfied:
+                log_callback(f"[调试] ✓ 满足终止条件，准备停止")
                 log_callback("满足条件，停止魔方！")
                 # 判断是否满足条件1、条件3_1或条件3_2
                 play_wav = (
@@ -148,31 +178,41 @@ def run_monster_loop(stop_event, status_callback, log_callback=None, condition_f
                     (condition3_1 and enable_c3_1) or
                     (condition3_2 and enable_c3_2)
                 )
+                log_callback(f"[调试] 是否需要播放特殊音效: {play_wav}")
                 if play_wav:
                     # 额外输出日志
                     log_callback("沃日！狗叫！分钱！")
                     # 播放wav文件（兼容PyInstaller打包）
                     wav_path = get_resource_path("sound/wangwang.wav")
+                    log_callback(f"[调试] 音效文件路径: {wav_path}")
                     if os.path.exists(wav_path):
+                        log_callback(f"[调试] ✓ 音效文件存在，开始播放")
                         winsound.PlaySound(wav_path, winsound.SND_FILENAME)
                     else:
+                        log_callback(f"[调试] ✗ 音效文件不存在，使用默认beep")
                         winsound.Beep(1000, 200)  # 如果文件不存在，回退到beep
                 else:
+                    log_callback(f"[调试] 播放默认beep")
                     winsound.Beep(1000, 200)
                 status_callback("已满足终止条件，任务结束")
                 break
 
             if stop_event.is_set():
+                log_callback(f"[调试] 检测到停止信号")
                 break
 
+            log_callback(f"[调试] ✗ 未满足终止条件，继续执行点击序列")
             perform_click_sequence(log_callback=log_callback)
+            log_callback(f"[调试] ========== 第 {find_count} 次循环结束 ==========")
         else:
             log_callback("已手动停止")
             status_callback("已手动停止")
     except Exception as e:
+        log_callback(f"[调试] ✗ 主循环发生异常: {e}")
+        import traceback
+        log_callback(f"[调试] 异常堆栈:\n{traceback.format_exc()}")
         log_callback(f"运行出错: {e}")
         status_callback(f"运行出错: {e}")
-        import traceback
         traceback.print_exc()
 
 
@@ -186,7 +226,7 @@ WIN_SIZE_WITH_LOG = "520x480"
 class MonsterAbilityApp:
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("好怪魔方")
+        self.root.title("好怪魔方Test")
         self.root.geometry(WIN_SIZE_NORMAL)
         self.root.resizable(True, True)
         self.root.minsize(480, 180)
