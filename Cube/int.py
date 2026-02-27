@@ -12,14 +12,14 @@ BASE_DIR = Path(__file__).parent
 SEARCH_REGION = (0, 0, 1366, 768)
 
 IMAGE_FILES = [
-    'picture/magic13.png',
-    'picture/magic10.png'
+    # 'picture/int2.png',
+    'picture/int8.png'
 ]
 
 # 匹配阈值（0-1之间，越高越严格，建议0.95以上）
 MATCH_THRESHOLD = 0.99
 
-# 需要找到的匹配次数（找到2次及以上才停止，可以是同一张图片的不同位置）
+# 需要找到的匹配次数（找到3个不同位置才停止，可以是同一张图片的不同位置）
 REQUIRED_MATCH_COUNT = 2
 
 # 最小匹配距离（像素），用于过滤重复匹配
@@ -140,13 +140,13 @@ def perform_click_sequence():
     time.sleep(0.1)
     
     # 2. 0.1秒后单击640,464
-    print("点击 (640, 464)")
-    pyautogui.click(472, 464)
+    print("点击 (470, 464)")
+    pyautogui.click(470, 464)
     time.sleep(0.1)
     
     # 3. 0.1秒后单击640,474
-    print("点击 (640, 474)")
-    pyautogui.click(472, 474)
+    print("点击 (470, 474)")
+    pyautogui.click(470, 474)
     time.sleep(1.5)  # 等待1秒后再次查找图片
 
 
@@ -162,10 +162,10 @@ if __name__ == "__main__":
         
         print(f"\n找到 {found_count} 次匹配")
         
-        # 如果找到2次及以上，beep并停止
+        # 如果找到3个不同位置，beep并停止
         if found_count >= REQUIRED_MATCH_COUNT:
-            print(f"✓ 找到 {found_count} 次匹配，达到阈值 {REQUIRED_MATCH_COUNT}，停止任务")
-            winsound.Beep(1000, 200)  # 频率1000Hz，持续时间200ms
+            print(f"✓ 找到 {found_count} 个不同位置的匹配，达到阈值 {REQUIRED_MATCH_COUNT}，停止任务")
+            winsound.Beep(1000, 1000)  # 频率1000Hz，持续时间200ms
             break
         else:
             print(f"✗ 只找到 {found_count} 次匹配，未达到阈值 {REQUIRED_MATCH_COUNT}，继续循环")

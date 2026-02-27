@@ -12,8 +12,7 @@ BASE_DIR = Path(__file__).parent
 SEARCH_REGION = (0, 0, 1366, 768)
 
 IMAGE_FILES = [
-    'picture/magic13.png',
-    'picture/magic10.png'
+    'picture/cd-1.png'
 ]
 
 # 匹配阈值（0-1之间，越高越严格，建议0.95以上）
