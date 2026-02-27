@@ -12,20 +12,14 @@ BASE_DIR = Path(__file__).parent
 SEARCH_REGION = (0, 0, 1366, 768)
 
 IMAGE_FILES = [
-    'picture/all5.png',
-    'picture/all6.png',
-    'picture/str1.png',
-    'picture/str2.png',
-    'picture/str6.png',
-    'picture/str8.png',
-    'picture/cri1.png'
+    'picture/int3.png'
 ]
 
 # 匹配阈值（0-1之间，越高越严格，建议0.95以上）
 MATCH_THRESHOLD = 0.99
 
 # 需要找到的匹配次数（找到3个不同位置才停止，可以是同一张图片的不同位置）
-REQUIRED_MATCH_COUNT = 3
+REQUIRED_MATCH_COUNT = 2
 
 # 最小匹配距离（像素），用于过滤重复匹配
 MIN_MATCH_DISTANCE = 10
@@ -144,13 +138,9 @@ def perform_click_sequence():
     pyautogui.click(390, 749)
     time.sleep(0.1)
     
-    # 2. 0.1秒后单击640,464
-    print("点击 (640, 464)")
-    pyautogui.click(640, 464)
-    time.sleep(0.1)
     
     # 3. 0.1秒后单击640,474
-    print("点击 (640, 474)")
+    print("点击 (470, 474)")
     pyautogui.click(640, 474)
     time.sleep(1.5)  # 等待1秒后再次查找图片
 
