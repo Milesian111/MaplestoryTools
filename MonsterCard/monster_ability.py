@@ -33,7 +33,7 @@ try:
     BASE_DIR = Path(sys._MEIPASS)
 except Exception:
     # 开发环境
-BASE_DIR = Path(__file__).parent
+    BASE_DIR = Path(__file__).parent
 
 # 查找范围 (x1, y1, x2, y2)
 SEARCH_REGION = (0, 0, 1366, 768)
@@ -97,20 +97,20 @@ def find_image_and_click(template_path, region, log_callback=None):
             except Exception:
                 return False
         else:
-        return False
+            return False
 
     if template.shape[0] > height or template.shape[1] > width:
         return False
 
     # 截取屏幕指定区域（添加异常捕获）
     try:
-    screenshot = pyautogui.screenshot(region=(left, top, width, height))
+        screenshot = pyautogui.screenshot(region=(left, top, width, height))
     except Exception:
         return False  # 截图失败，返回False
     
     try:
-    screen_array = np.array(screenshot)
-    screen_gray = cv2.cvtColor(screen_array, cv2.COLOR_RGB2GRAY)
+        screen_array = np.array(screenshot)
+        screen_gray = cv2.cvtColor(screen_array, cv2.COLOR_RGB2GRAY)
     except Exception:
         return False  # 图像处理失败，返回False
 
@@ -204,13 +204,13 @@ def find_image_in_region(log_callback=None):
     
     # 截取屏幕指定区域（添加异常捕获）
     try:
-    screenshot = pyautogui.screenshot(region=(left, top, width, height))
+        screenshot = pyautogui.screenshot(region=(left, top, width, height))
     except Exception:
         return []  # 截图失败，返回空列表
     
     try:
-    screen_array = np.array(screenshot)
-    screen_gray = cv2.cvtColor(screen_array, cv2.COLOR_RGB2GRAY)
+        screen_array = np.array(screenshot)
+        screen_gray = cv2.cvtColor(screen_array, cv2.COLOR_RGB2GRAY)
     except Exception:
         return []  # 图像处理失败，返回空列表
     
@@ -244,7 +244,7 @@ def find_image_in_region(log_callback=None):
                     except Exception:
                         continue
                 else:
-                continue
+                    continue
             
             # 检查模板是否大于搜索区域
             if template.shape[0] > height or template.shape[1] > width:
