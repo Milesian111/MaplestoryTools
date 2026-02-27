@@ -4,6 +4,7 @@
 F11/F12 使用全局热键，在任意窗口下都有效（需安装 keyboard：pip install keyboard）。
 """
 import threading
+import time
 import tkinter as tk
 from tkinter import ttk, messagebox
 
@@ -15,7 +16,15 @@ except ImportError:
     HAS_KEYBOARD = False
 
 # 导入 monster_ability 的核心逻辑
-from monster_ability import find_image_in_region, perform_click_sequence, check_image_exists
+from monster_ability import (
+    find_image_in_region,
+    perform_click_sequence,
+    perform_click_sequence_recovery,
+    check_image_exists,
+    find_all_matches,
+    AFTER_BOX_W,
+    AFTER_BOX_H,
+)
 import winsound
 from pathlib import Path
 import sys
@@ -32,14 +41,15 @@ def get_resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 
-def run_monster_loop(stop_event, status_callback, log_callback=None, condition_flags=None):
+def run_monster_loop(stop_event, status_callback, log_callback=None, condition_flags=None, cube_type="怪怪魔方"):
     """在后台线程中执行 monster_ability 的主循环，遇 stop_event 或满足终止条件时退出。
     condition_flags: (enable_c2, enable_c3, enable_c4, enable_c5, enable_c6, enable_c7, c3_sub_flags)，condition1 始终启用。
-    c3_sub_flags: (enable_c3_1, enable_c3_2, ..., enable_c3_12) 条件3的12个子条件"""
+    c3_sub_flags: (enable_c3_1, enable_c3_2, ..., enable_c3_12) 条件3的12个子条件
+    cube_type: "怪怪魔方" 或 "怪怪恢复魔方(一次洗三个)" """
     if log_callback is None:
         log_callback = lambda msg: None
     if condition_flags is None:
-        condition_flags = (True, False, True, True, True, True, (True,)*12)  # c2=True, c3=False, c4=True, c5=True, c6=True, c7=True, c3_sub全部True
+        condition_flags = (True, False, True, True, True, True, (True,)*12)
     enable_c2, enable_c3, enable_c4, enable_c5, enable_c6, enable_c7, c3_sub_flags = condition_flags
     enable_c3_1, enable_c3_2, enable_c3_3, enable_c3_4, enable_c3_5, enable_c3_6, enable_c3_7, enable_c3_8, enable_c3_9, enable_c3_10, enable_c3_11, enable_c3_12 = c3_sub_flags
     
@@ -48,6 +58,10 @@ def run_monster_loop(stop_event, status_callback, log_callback=None, condition_f
         log_callback("错误：请关闭强化动画！")
         status_callback("错误：请关闭强化动画！")
         return
+
+    if cube_type == "怪怪恢复魔方(一次洗三个)":
+        _run_monster_loop_recovery(stop_event, status_callback, log_callback, condition_flags)
+        return
     
     find_count = 0
     try:
@@ -55,19 +69,19 @@ def run_monster_loop(stop_event, status_callback, log_callback=None, condition_f
             find_count += 1
             found_images = find_image_in_region(log_callback=log_callback)
 
-            final_count = sum(1 for img in found_images if img["file"] == "picture/final.png")
-            monster_atk_count = sum(1 for img in found_images if img["file"] == "picture/monster_atk.png")
-            monster_magic_count = sum(1 for img in found_images if img["file"] == "picture/monster_magic.png")
-            skill_2_count = sum(1 for img in found_images if img["file"] == "picture/skill_2.png")
-            monster_all_count = sum(1 for img in found_images if img["file"] == "picture/monster_all.png")
-            monster_str_count = sum(1 for img in found_images if img["file"] == "picture/monster_str.png")
-            monster_dex_count = sum(1 for img in found_images if img["file"] == "picture/monster_dex.png")
-            monster_int_count = sum(1 for img in found_images if img["file"] == "picture/monster_int.png")
-            monster_luk_count = sum(1 for img in found_images if img["file"] == "picture/monster_luk.png")
-            monster_cri_count = sum(1 for img in found_images if img["file"] == "picture/monster_cri.png")
-            monster_hp_count = sum(1 for img in found_images if img["file"] == "picture/monster_hp.png")
-            monster_ignore_count = sum(1 for img in found_images if img["file"] == "picture/monster_ignore.png")
-            monster_buff_count = sum(1 for img in found_images if img["file"] == "picture/monster_buff.png")
+            final_count = sum(1 for img in found_images if img["file"].endswith("final.png"))
+            monster_atk_count = sum(1 for img in found_images if img["file"].endswith("monster_atk.png"))
+            monster_magic_count = sum(1 for img in found_images if img["file"].endswith("monster_magic.png"))
+            skill_2_count = sum(1 for img in found_images if img["file"].endswith("skill_2.png"))
+            monster_all_count = sum(1 for img in found_images if img["file"].endswith("monster_all.png"))
+            monster_str_count = sum(1 for img in found_images if img["file"].endswith("monster_str.png"))
+            monster_dex_count = sum(1 for img in found_images if img["file"].endswith("monster_dex.png"))
+            monster_int_count = sum(1 for img in found_images if img["file"].endswith("monster_int.png"))
+            monster_luk_count = sum(1 for img in found_images if img["file"].endswith("monster_luk.png"))
+            monster_cri_count = sum(1 for img in found_images if img["file"].endswith("monster_cri.png"))
+            monster_hp_count = sum(1 for img in found_images if img["file"].endswith("monster_hp.png"))
+            monster_ignore_count = sum(1 for img in found_images if img["file"].endswith("monster_ignore.png"))
+            monster_buff_count = sum(1 for img in found_images if img["file"].endswith("monster_buff.png"))
 
             # 按照指定顺序和名称映射构建日志
             count_items = [
@@ -165,10 +179,149 @@ def run_monster_loop(stop_event, status_callback, log_callback=None, condition_f
             if stop_event.is_set():
                 break
 
-            perform_click_sequence(log_callback=log_callback)
+            is_first_click = (find_count == 1)
+            if not perform_click_sequence(log_callback=log_callback, first_run=is_first_click):
+                status_callback('错误：未找到"重新设定"按钮，请确认是否打开怪怪页面并选择魔方！')
+                break
         else:
             log_callback("已手动停止")
             status_callback("已手动停止")
+    except Exception as e:
+        log_callback(f"运行出错: {e}")
+        status_callback(f"运行出错: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+def _result_str_from_found_images(found_images):
+    """根据 found_images 生成单框日志字符串，如 '1终、2攻' 或 '无'。"""
+    count_items = [
+        (sum(1 for img in found_images if img["file"].endswith("final.png")), "终"),
+        (sum(1 for img in found_images if img["file"].endswith("monster_atk.png")), "攻"),
+        (sum(1 for img in found_images if img["file"].endswith("monster_magic.png")), "魔"),
+        (sum(1 for img in found_images if img["file"].endswith("skill_2.png")), "被"),
+        (sum(1 for img in found_images if img["file"].endswith("monster_all.png")), "全"),
+        (sum(1 for img in found_images if img["file"].endswith("monster_str.png")), "力"),
+        (sum(1 for img in found_images if img["file"].endswith("monster_dex.png")), "敏"),
+        (sum(1 for img in found_images if img["file"].endswith("monster_int.png")), "智"),
+        (sum(1 for img in found_images if img["file"].endswith("monster_luk.png")), "运"),
+        (sum(1 for img in found_images if img["file"].endswith("monster_cri.png")), "爆"),
+        (sum(1 for img in found_images if img["file"].endswith("monster_hp.png")), "血"),
+        (sum(1 for img in found_images if img["file"].endswith("monster_ignore.png")), "无视"),
+        (sum(1 for img in found_images if img["file"].endswith("monster_buff.png")), "buff"),
+    ]
+    found_items = [(count, name) for count, name in count_items if count > 0]
+    result_parts = [f"{count}{name}" for count, name in found_items]
+    return "、".join(result_parts) if result_parts else "无"
+
+
+def _check_conditions_in_found_images(found_images, enable_c2, enable_c3, enable_c4, enable_c5, enable_c6, enable_c7,
+                                      enable_c3_1, enable_c3_2, enable_c3_3, enable_c3_4, enable_c3_5, enable_c3_6,
+                                      enable_c3_7, enable_c3_8, enable_c3_9, enable_c3_10, enable_c3_11, enable_c3_12):
+    """根据 found_images 列表计算各 count 并判断是否满足任一终止条件。返回 (satisfied, condition1, condition3_1, condition3_2) 用于音效。"""
+    final_count = sum(1 for img in found_images if img["file"].endswith("final.png"))
+    monster_atk_count = sum(1 for img in found_images if img["file"].endswith("monster_atk.png"))
+    monster_magic_count = sum(1 for img in found_images if img["file"].endswith("monster_magic.png"))
+    skill_2_count = sum(1 for img in found_images if img["file"].endswith("skill_2.png"))
+    monster_all_count = sum(1 for img in found_images if img["file"].endswith("monster_all.png"))
+    monster_str_count = sum(1 for img in found_images if img["file"].endswith("monster_str.png"))
+    monster_dex_count = sum(1 for img in found_images if img["file"].endswith("monster_dex.png"))
+    monster_int_count = sum(1 for img in found_images if img["file"].endswith("monster_int.png"))
+    monster_luk_count = sum(1 for img in found_images if img["file"].endswith("monster_luk.png"))
+    monster_cri_count = sum(1 for img in found_images if img["file"].endswith("monster_cri.png"))
+    monster_hp_count = sum(1 for img in found_images if img["file"].endswith("monster_hp.png"))
+    monster_ignore_count = sum(1 for img in found_images if img["file"].endswith("monster_ignore.png"))
+    monster_buff_count = sum(1 for img in found_images if img["file"].endswith("monster_buff.png"))
+
+    condition1 = final_count >= 3
+    condition2 = final_count >= 2
+    condition3_1 = condition2 and monster_atk_count >= 1
+    condition3_2 = condition2 and monster_magic_count >= 1
+    condition3_3 = condition2 and monster_all_count >= 1
+    condition3_4 = condition2 and monster_str_count >= 1
+    condition3_5 = condition2 and monster_dex_count >= 1
+    condition3_6 = condition2 and monster_int_count >= 1
+    condition3_7 = condition2 and monster_luk_count >= 1
+    condition3_8 = condition2 and monster_cri_count >= 1
+    condition3_9 = condition2 and monster_hp_count >= 1
+    condition3_10 = condition2 and monster_ignore_count >= 1
+    condition3_11 = condition2 and monster_buff_count >= 1
+    condition3_12 = condition2 and skill_2_count >= 1
+    condition3 = (
+        (condition3_1 and enable_c3_1) or (condition3_2 and enable_c3_2) or (condition3_3 and enable_c3_3) or
+        (condition3_4 and enable_c3_4) or (condition3_5 and enable_c3_5) or (condition3_6 and enable_c3_6) or
+        (condition3_7 and enable_c3_7) or (condition3_8 and enable_c3_8) or (condition3_9 and enable_c3_9) or
+        (condition3_10 and enable_c3_10) or (condition3_11 and enable_c3_11) or (condition3_12 and enable_c3_12)
+    )
+    condition4 = (monster_atk_count >= 2 or monster_magic_count >= 2) and skill_2_count >= 1
+    condition5 = final_count >= 1 and (monster_atk_count >= 2 or monster_magic_count >= 2)
+    condition6 = final_count >= 1 and skill_2_count >= 1 and (monster_atk_count >= 1 or monster_magic_count >= 1)
+    condition7 = monster_atk_count >= 3 or monster_magic_count >= 3
+    satisfied = condition1 or (condition2 and enable_c2) or (condition3 and enable_c3) or (condition4 and enable_c4) or (condition5 and enable_c5) or (condition6 and enable_c6) or (condition7 and enable_c7)
+    return satisfied, condition1, condition3_1, condition3_2
+
+
+def _run_monster_loop_recovery(stop_event, status_callback, log_callback, condition_flags):
+    """怪怪恢复魔方(一次洗三个)的主循环：找三个 after -> 划定三个 after 框 -> 依次在框内查终止条件 -> 不满足则点 btn_reset3 双空格后继续。"""
+    enable_c2, enable_c3, enable_c4, enable_c5, enable_c6, enable_c7, c3_sub_flags = condition_flags
+    enable_c3_1, enable_c3_2, enable_c3_3, enable_c3_4, enable_c3_5, enable_c3_6, enable_c3_7, enable_c3_8, enable_c3_9, enable_c3_10, enable_c3_11, enable_c3_12 = c3_sub_flags
+    find_count = 0
+    try:
+        while not stop_event.is_set():
+            after_matches = find_all_matches("picture/after.png", log_callback=log_callback)
+            if len(after_matches) == 0:
+                log_callback("错误，请确定是否已经进入洗恢复魔方的界面（一个before，三个after框）")
+                status_callback("错误，请确定是否已经进入洗恢复魔方的界面")
+                return
+            if len(after_matches) == 1 or len(after_matches) == 2:
+                log_callback("错误，请确定是不是4个框都在屏幕范围内，如果不是，请调节分辨率")
+                status_callback("错误，请调节分辨率或窗口位置")
+                return
+            # 取前三个，按 (y, x) 排序保证顺序稳定；从 after 图片左上角开始划 225*242 的框
+            three = sorted(after_matches[:3], key=lambda m: (m["y"], m["x"]))
+            after_boxes = []
+            for m in three:
+                x1 = m["x"]  # after 左上角
+                y1 = m["y"]
+                after_boxes.append((x1, y1, x1 + AFTER_BOX_W, y1 + AFTER_BOX_H))
+            find_count += 1
+            # 先收集三个框的找图结果和日志串
+            box_result_strs = []
+            box_found_images_list = []
+            for box_idx, box in enumerate(after_boxes):
+                if stop_event.is_set():
+                    status_callback("已手动停止")
+                    return
+                found_images = find_image_in_region(region=box, log_callback=log_callback, image_subdir="three")
+                box_found_images_list.append(found_images)
+                box_result_strs.append(_result_str_from_found_images(found_images))
+            log_callback(f"第{find_count}次，1框：{box_result_strs[0]}；2框：{box_result_strs[1]}；3框：{box_result_strs[2]}")
+            for box_idx, found_images in enumerate(box_found_images_list):
+                satisfied, condition1, condition3_1, condition3_2 = _check_conditions_in_found_images(
+                    found_images, enable_c2, enable_c3, enable_c4, enable_c5, enable_c6, enable_c7,
+                    enable_c3_1, enable_c3_2, enable_c3_3, enable_c3_4, enable_c3_5, enable_c3_6,
+                    enable_c3_7, enable_c3_8, enable_c3_9, enable_c3_10, enable_c3_11, enable_c3_12,
+                )
+                if satisfied:
+                    log_callback(f"第{find_count}次，第{box_idx + 1}个框满足条件，停止魔方！")
+                    if condition1 or (condition3_1 and enable_c3_1) or (condition3_2 and enable_c3_2):
+                        log_callback("沃日！狗叫！分钱！")
+                        wav_path = get_resource_path("sound/wangwang.wav")
+                        if os.path.exists(wav_path):
+                            winsound.PlaySound(wav_path, winsound.SND_FILENAME)
+                        else:
+                            winsound.Beep(1000, 200)
+                    else:
+                        winsound.Beep(1000, 200)
+                    status_callback("已满足终止条件，任务结束")
+                    return
+            if not perform_click_sequence_recovery(log_callback=log_callback):
+                log_callback("拼尽全力，无法战胜！")
+                status_callback("拼尽全力，无法战胜！")
+                return
+            time.sleep(1.5)  # 两次空格后等待 1.5 秒再开始下一轮找图
+        log_callback("已手动停止")
+        status_callback("已手动停止")
     except Exception as e:
         log_callback(f"运行出错: {e}")
         status_callback(f"运行出错: {e}")
@@ -195,6 +348,9 @@ class MonsterAbilityApp:
         self.worker_thread = None
         self._log_visible = False
         self._conditions_visible = False
+        self._cube_visible = False
+        # 魔方类型（二选一）
+        self._cube_var = tk.StringVar(value="怪怪魔方")
         # 终止条件勾选：condition1 固定启用，condition2~7 可勾选
         self._cond2_var = tk.BooleanVar(value=True)
         self._cond3_var = tk.BooleanVar(value=True)  # 双终+有效
@@ -247,6 +403,9 @@ class MonsterAbilityApp:
         self.btn_log = ttk.Button(btn_frame, text="查看日志", command=self._toggle_log)
         self.btn_log.pack(side=tk.LEFT, padx=(0, 8))
 
+        self.btn_cube = ttk.Button(btn_frame, text="选择魔方", command=self._toggle_cube)
+        self.btn_cube.pack(side=tk.LEFT, padx=(0, 8))
+
         self.btn_conditions = ttk.Button(btn_frame, text="选择终止条件", command=self._show_conditions_inline)
         self.btn_conditions.pack(side=tk.LEFT)
 
@@ -283,6 +442,12 @@ class MonsterAbilityApp:
         self._notice_text.config(state=tk.DISABLED)
         self._notice_text.pack(anchor=tk.W, fill=tk.BOTH, expand=True)
         self._notice_frame.pack(fill=tk.BOTH, expand=True, pady=(12, 0))
+
+        # 选择魔方区域（与注意事项同位置切换，默认不显示）
+        self._cube_frame = ttk.LabelFrame(main, text="选择魔方", padding=8)
+        ttk.Radiobutton(self._cube_frame, text="怪怪魔方", variable=self._cube_var, value="怪怪魔方").pack(anchor=tk.W, pady=4)
+        ttk.Radiobutton(self._cube_frame, text="怪怪恢复魔方(一次洗三个)", variable=self._cube_var, value="怪怪恢复魔方(一次洗三个)").pack(anchor=tk.W, pady=4)
+        ttk.Button(self._cube_frame, text="确定", command=self._hide_cube).pack(pady=(8, 0))
 
         # 终止条件选择区域（与注意事项同位置切换，默认不显示）
         self._conditions_frame = ttk.Frame(main)
@@ -351,10 +516,40 @@ class MonsterAbilityApp:
         self._log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         log_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
+    def _toggle_cube(self):
+        """显示/隐藏选择魔方区域。若当前已显示则隐藏，否则在注意事项位置显示。"""
+        if self._cube_visible:
+            self._hide_cube()
+            return
+        # 显示选择魔方
+        if self._conditions_visible:
+            self._conditions_frame.pack_forget()
+            self._conditions_visible = False
+            self.root.geometry(WIN_SIZE_NORMAL)
+        if self._log_visible:
+            self._log_frame.pack_forget()
+            self._log_visible = False
+            self.root.geometry(WIN_SIZE_NORMAL)
+            self.btn_log.config(text="查看日志")
+        self._notice_frame.pack_forget()
+        self._cube_frame.pack(fill=tk.BOTH, expand=True, pady=(12, 0))
+        self._cube_visible = True
+
+    def _hide_cube(self):
+        """收起选择魔方区域，恢复显示注意事项。"""
+        if not self._cube_visible:
+            return
+        self._cube_frame.pack_forget()
+        self._notice_frame.pack(fill=tk.BOTH, expand=True, pady=(12, 0))
+        self._cube_visible = False
+
     def _show_conditions_inline(self):
         """在注意事项位置显示终止条件选择区域。"""
         if self._conditions_visible:
             return
+        # 若当前在选择魔方界面，切到本界面时自动确定并关闭选择魔方
+        if self._cube_visible:
+            self._hide_cube()
         if self._log_visible:
             self._log_frame.pack_forget()
             self._log_visible = False
@@ -501,6 +696,9 @@ class MonsterAbilityApp:
             self.btn_log.config(text="查看日志")
             self._log_visible = False
         else:
+            # 若当前在选择魔方界面，切到日志时自动确定并关闭选择魔方
+            if self._cube_visible:
+                self._hide_cube()
             self._notice_frame.pack_forget()
             self._conditions_frame.pack_forget()
             self._conditions_visible = False
@@ -602,9 +800,10 @@ class MonsterAbilityApp:
             self._cond7_var.get(),
             c3_sub_flags,
         )
+        cube_type = self._cube_var.get()
         self.worker_thread = threading.Thread(
             target=run_monster_loop,
-            args=(self.stop_event, self._status_callback, self._log_callback, condition_flags),
+            args=(self.stop_event, self._status_callback, self._log_callback, condition_flags, cube_type),
             daemon=True,
         )
         self.worker_thread.start()
