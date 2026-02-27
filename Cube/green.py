@@ -12,13 +12,7 @@ BASE_DIR = Path(__file__).parent
 SEARCH_REGION = (0, 0, 1366, 768)
 
 IMAGE_FILES = [
-    'picture/all5.png',
-    'picture/all6.png',
-    'picture/dex2.png',
-    'picture/str2.png',
-    'picture/dex8.png',
-    'picture/str8.png',
-    'picture/cri1.png'
+    'picture/green.png'
 ]
 
 # 匹配阈值（0-1之间，越高越严格，建议0.95以上）
