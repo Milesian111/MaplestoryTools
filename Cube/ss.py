@@ -5,6 +5,8 @@ import winsound
 import time
 from pathlib import Path
 
+from click_sequence import perform_click_sequence, activate_window
+
 # 获取当前脚本所在目录
 BASE_DIR = Path(__file__).parent
 
@@ -82,29 +84,11 @@ def find_image_in_region():
         return False
 
 
-def perform_click_sequence():
-    """执行点击序列"""
-    print("\n执行点击序列...")
-    # 1. 点击474,744
-    print("点击 (388, 745)")
-    pyautogui.click(388, 745)
-    time.sleep(0.1)
-    
-    # 2. 0.1秒后点击646,464
-    print("点击 (646, 464)")
-    pyautogui.click(646, 464)
-    time.sleep(0.1)
-    
-    # 3. 0.1秒后再次点击646,464
-    print("点击 (646, 464)")
-    pyautogui.click(646, 464)
-    time.sleep(1.2)  # 1秒后再次找图
-
-
 if __name__ == "__main__":
     print("开始查找图片...")
     print(f"查找目标: {IMAGE_FILE}\n")
     
+    activate_window(BASE_DIR, SEARCH_REGION)
     while True:
         # 查找图片
         found = find_image_in_region()

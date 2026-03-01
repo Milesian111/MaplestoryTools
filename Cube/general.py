@@ -5,6 +5,8 @@ import winsound
 import time
 from pathlib import Path
 
+from click_sequence import perform_click_sequence, activate_window
+
 # 获取当前脚本所在目录
 BASE_DIR = Path(__file__).parent
 
@@ -142,25 +144,6 @@ def find_image_in_region():
     return found_images
 
 
-def perform_click_sequence():
-    """执行点击序列"""
-    print("\n执行点击序列...")
-    # 1. 鼠标左键单击390,749
-    print("点击 (390, 749)")
-    pyautogui.click(390, 749)
-    time.sleep(0.1)
-    
-    # 2. 0.1秒后单击640,464
-    print("点击 (640, 464)")
-    pyautogui.click(640, 464)
-    time.sleep(0.1)
-    
-    # 3. 0.1秒后单击640,474
-    print("点击 (640, 474)")
-    pyautogui.click(640, 474)
-    time.sleep(1.5)  # 等待1秒后再次查找图片
-
-
 if __name__ == "__main__":
     print("开始查找图片...")
     print(f"停止条件：")
@@ -169,6 +152,7 @@ if __name__ == "__main__":
     print(f"  3. 找到 3 个 dex2 或 dex8（任意组合）")
     print(f"  4. 找到 3 个 luk2 或 luk8（任意组合）\n")
     
+    activate_window(BASE_DIR, SEARCH_REGION)
     while True:
         # 查找图片
         found_images = find_image_in_region()
