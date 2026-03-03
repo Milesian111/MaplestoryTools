@@ -111,6 +111,13 @@ def check_group_satisfied(region, group, picture_dir, threshold=MATCH_THRESHOLD,
     return True
 
 
+def check_green_found(region, picture_dir, threshold=MATCH_THRESHOLD):
+    """在 region 内是否找到 picture/green.png（上绿终止条件）。"""
+    path = Path(picture_dir) / "green.png"
+    positions = find_image_positions(region, path, threshold=threshold, min_distance=MIN_MATCH_DISTANCE)
+    return len(positions) > 0
+
+
 def check_any_termination_satisfied(region, groups, picture_dir, threshold=MATCH_THRESHOLD, min_distance=MIN_MATCH_DISTANCE):
     """
     多组终止条件为或逻辑：任一组满足即返回该组，否则返回 None。

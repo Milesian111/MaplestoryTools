@@ -21,16 +21,16 @@ except ImportError:
     HAS_WINSOUND = False
 
 from click_sequence import activate_window, perform_click_sequence
-from cube_logic import check_any_termination_satisfied, SEARCH_REGION
+from cube_logic import check_any_termination_satisfied, check_green_found, SEARCH_REGION
 
 # 与 build_cube_execution.py 同级的 picture 目录，即项目下的 Cube/picture/
 _CUBE_DIR = Path(__file__).resolve().parent
 _PICTURE_DIR = _CUBE_DIR / "picture"
 
-WIN_SIZE_NORMAL = "520x250"
-WIN_SIZE_WITH_LOG = "520x480"
-WIN_SIZE_WITH_EQUIP = "520x360"
-WIN_SIZE_WITH_ATTR = "520x280"
+WIN_SIZE_NORMAL = "600x250"
+WIN_SIZE_WITH_LOG = "600x480"
+WIN_SIZE_WITH_EQUIP = "600x420"
+WIN_SIZE_WITH_ATTR = "600x280"
 
 # 图片名（不含.png）-> 显示标签
 ATTR_LABELS = {
@@ -103,13 +103,14 @@ def _attr_to_column(key):
     return "other"
 
 
-def run_cube_loop(stop_event, status_callback, log_callback=None, equipment_type=None, termination_groups=None, base_dir=None, picture_dir=None):
+def run_cube_loop(stop_event, status_callback, log_callback=None, equipment_type=None, termination_groups=None, base_dir=None, picture_dir=None, green_only=False):
     """
     魔方主循环：在屏幕范围内按终止条件找图，多组为或逻辑；找到则停止，否则执行点击序列后继续。
     equipment_type: 当前选择的装备类型。
-    termination_groups: 终止条件组列表，如 [["str8","str8","str6"]]，任一组满足即停止。
+    termination_groups: 终止条件组列表，如 [["str8","str8","str6"]]，任一组满足即停止；green_only 时忽略。
     base_dir: Cube 目录（用于 activate_window），默认与本脚本同级。
-    picture_dir: 属性图片目录（如 str8.png），默认 Cube/picture/，与 build_cube_execution.py 同级下的 picture 文件夹。
+    picture_dir: 属性图片目录（如 str8.png、green.png），默认 Cube/picture/。
+    green_only: True 时终止条件为找到 picture/green.png，与主循环逻辑一致。
     """
     if log_callback is None:
         log_callback = lambda msg: None
@@ -123,6 +124,23 @@ def run_cube_loop(stop_event, status_callback, log_callback=None, equipment_type
         found_condition = False
         while not stop_event.is_set():
             n += 1
+            if green_only:
+                if check_green_found(SEARCH_REGION, picture_dir):
+                    log_callback(f"第{n}次，满足条件[绿]")
+                    if HAS_WINSOUND:
+                        try:
+                            winsound.Beep(1000, 500)
+                        except Exception:
+                            pass
+                    status_callback("已找到终止条件")
+                    found_condition = True
+                    break
+                log_callback(f"第{n}次，未找到目标条件")
+                perform_click_sequence()
+                if stop_event.is_set():
+                    break
+                time.sleep(0.3)
+                continue
             if not termination_groups:
                 log_callback(f"第{n}次，未设置终止条件，请在选择属性中添加")
                 time.sleep(1.0)
@@ -169,6 +187,7 @@ class CubeApp:
         # 装备类型（单选），记录打开装备面板时的选择，用于修改装备时自动清除属性
         self._equip_var = tk.StringVar(value="200防具饰品")
         self._equip_when_opened = None
+        self._green_mode = False
         self._build_ui()
         self._bind_keys()
         self._register_global_hotkeys()
@@ -200,7 +219,10 @@ class CubeApp:
         self.btn_equip.pack(side=tk.LEFT, padx=(0, 8))
 
         self.btn_attr = ttk.Button(btn_frame, text="选择属性", command=self._toggle_attr)
-        self.btn_attr.pack(side=tk.LEFT)
+        self.btn_attr.pack(side=tk.LEFT, padx=(0, 8))
+
+        self.btn_green = ttk.Button(btn_frame, text="上绿", command=self._toggle_green)
+        self.btn_green.pack(side=tk.LEFT)
 
         # 注意事项（与 MonsterCard 风格一致）
         NOTICE_TEXT = """注意事项：
@@ -300,6 +322,18 @@ class CubeApp:
         self._equip_frame.pack(fill=tk.BOTH, expand=True, pady=(12, 0))
         self.root.geometry(WIN_SIZE_WITH_EQUIP)
         self._equip_visible = True
+
+    def _toggle_green(self):
+        """上绿模式：终止条件为找到 green.png；开启后禁用选择装备、选择属性。"""
+        self._green_mode = not self._green_mode
+        if self._green_mode:
+            self.btn_green.config(text="取消上绿")
+            self.btn_equip.config(state=tk.DISABLED)
+            self.btn_attr.config(state=tk.DISABLED)
+        else:
+            self.btn_green.config(text="上绿")
+            self.btn_equip.config(state=tk.NORMAL)
+            self.btn_attr.config(state=tk.NORMAL)
 
     def _hide_equip(self):
         if not self._equip_visible:
@@ -512,9 +546,10 @@ class CubeApp:
         self.root.after(0, self._log_clear)
         equipment_type = self._equip_var.get()
         termination_groups = list(self._termination_attrs)
+        green_only = self._green_mode
         self.worker_thread = threading.Thread(
             target=run_cube_loop,
-            args=(self.stop_event, self._status_callback, self._log_callback, equipment_type, termination_groups, _CUBE_DIR, _PICTURE_DIR),
+            args=(self.stop_event, self._status_callback, self._log_callback, equipment_type, termination_groups, _CUBE_DIR, _PICTURE_DIR, green_only),
             daemon=True,
         )
         self.worker_thread.start()
