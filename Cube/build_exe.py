@@ -1,0 +1,81 @@
+"""
+运行此脚本可将 build_cube_execution.py 打包为 exe。
+需要先安装：pip install pyinstaller keyboard
+在 Cube 目录下执行：python build_exe.py
+（keyboard 用于全局 F11/F12 热键，未安装则仅窗口内有效）
+每次运行会将版本号 +1（如 0.0.1 -> 0.0.2），并写入 build_version.txt 供下次使用。
+"""
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+# Cube 目录（本脚本所在目录）
+CUBE_DIR = Path(__file__).resolve().parent
+VERSION_FILE = CUBE_DIR / "build_version.txt"
+
+# 读当前版本（格式 0.0.1）
+def get_version():
+    if VERSION_FILE.exists():
+        raw = VERSION_FILE.read_text(encoding="utf-8").strip()
+        m = re.match(r"^(\d+)\.(\d+)\.(\d+)$", raw)
+        if m:
+            return f"{m.group(1)}.{m.group(2)}.{m.group(3)}"
+    # 首次或无效：使用 0.0.1
+    return "0.0.1"
+
+# 版本号 +1 写回
+def bump_version():
+    if VERSION_FILE.exists():
+        raw = VERSION_FILE.read_text(encoding="utf-8").strip()
+        m = re.match(r"^(\d+)\.(\d+)\.(\d+)$", raw)
+        if m:
+            a, b, c = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            next_ver = f"{a}.{b}.{c + 1}"
+            VERSION_FILE.write_text(next_ver + "\n", encoding="utf-8")
+        else:
+            VERSION_FILE.write_text("0.0.2\n", encoding="utf-8")
+    else:
+        VERSION_FILE.write_text("0.0.2\n", encoding="utf-8")
+
+VERSION = get_version()
+NAME = f"好附加v{VERSION}"
+
+# Windows 下 PyInstaller --add-data 用分号
+ENTRY = "build_cube_execution.py"
+
+cmd = [
+    sys.executable,
+    "-m",
+    "PyInstaller",
+    "--onefile",           # 单文件 exe
+    "--windowed",          # 无控制台窗口（GUI 程序）
+    "--uac-admin",         # 默认以管理员权限启动（UAC 会弹窗确认）
+    "--hidden-import=keyboard",  # 全局热键，需一并打包
+    "--hidden-import=PIL",  # 确保PIL被包含
+    "--hidden-import=PIL.Image",  # 确保PIL.Image被包含
+    "--add-data=picture;picture",  # 打包picture目录（找图用）
+    f"--icon={CUBE_DIR / 'icon' / 'icon.png'}",  # exe 图标
+    f"--name={NAME}",
+    "--clean",
+    str(CUBE_DIR / ENTRY),
+]
+
+# 执行打包
+result = subprocess.run(cmd, cwd=str(CUBE_DIR))
+
+# 打包完成后再修改版本号，并删除中间文件
+if result.returncode == 0:
+    bump_version()
+    # 删除 build 文件夹和 spec 文件
+    build_dir = CUBE_DIR / "build"
+    if build_dir.exists():
+        shutil.rmtree(build_dir)
+        print("已删除 build 文件夹")
+    for spec in CUBE_DIR.glob("*.spec"):
+        spec.unlink()
+        print(f"已删除 {spec.name}")
+    print(f"打包成功！版本号已更新为下次打包准备。")
+else:
+    print(f"打包失败，版本号未更新。")
