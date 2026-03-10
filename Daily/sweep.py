@@ -13,7 +13,13 @@ if not getattr(sys, "frozen", False):
     if str(_root) not in sys.path:
         sys.path.insert(0, str(_root))
 
-from Utils.find_image import find_image_and_click
+from Utils.find_image import (
+    find_image_and_click,
+    find_image_and_click_with_score,
+    find_image_with_score,
+)
+
+from tenebris import run_tenebris_loop
 
 BASE_DIR = Path(__file__).parent
 SEARCH_REGION = (0, 0, 1920, 1080)
@@ -32,26 +38,53 @@ def _sleep_check_stop(stop_event, seconds):
         elapsed += 0.3
 
 
-def sweep(log_callback=None, stop_event=None, role_index=None):
+def sweep(log_callback=None, stop_event=None, role_index=None, tenebris_enabled=False):
     """找图 picture/btn_down.png 并点击，再找 picture/btn_daily.png 并点击。
     log_callback(msg): 可选，GUI 传入则用其输出日志，否则用 print。
     stop_event: 可选，GUI 传入时在等待/循环中检查，置位则立即返回。
-    role_index: 可选，当前角色序号；提供时在找到 btn_down 后打印「开始扫荡第X个角色。」"""
+    role_index: 可选，当前角色序号；提供时在找到 btn_down 后打印「开始扫荡第X个角色。」。
+    tenebris_enabled: 为 True 时，在判断切换角色成功（找到 btn_down）后先执行泰涅布利斯流程，再点击 btn_down 进入主流程。"""
     _log = log_callback if log_callback else lambda msg: print(msg, flush=True)
     region = SEARCH_REGION
-    # 1. 每 3 秒找图 btn_down，找到则点击并继续；最多找 40 次
     btn_down_path = BASE_DIR / "picture/btn_down.png"
+
+    # 1. 每 3 秒找图 btn_down（不点击），找到即表示切换角色成功；最多找 40 次
+    last_score = None
     for attempt in range(1, 41):
         if stop_event is not None and stop_event.is_set():
             return
-        if find_image_and_click(region, btn_down_path, threshold=0.95):
+        found, max_val = find_image_with_score(region, btn_down_path, threshold=0.95)
+        if found:
+            break
+        last_score = max_val
+        _sleep_check_stop(stop_event, 3)
+    else:
+        score_msg = f"，最高匹配阈值: {last_score:.3f}" if last_score is not None else ""
+        _log("错误，切角色卡住了哥" + score_msg)
+        return
+
+    # 2. 若勾选泰涅布利斯，先执行泰涅布利斯扫荡流程（每个角色一次）
+    if tenebris_enabled:
+        run_tenebris_loop(stop_event, log_callback=_log)
+        if stop_event is not None and stop_event.is_set():
+            return
+
+    # 3. 找图 btn_down 并点击，进入扫荡主流程；最多找 40 次
+    last_score = None
+    for attempt in range(1, 41):
+        if stop_event is not None and stop_event.is_set():
+            return
+        found, max_val = find_image_and_click_with_score(region, btn_down_path, threshold=0.95)
+        if found:
             _sleep_check_stop(stop_event, 0.5)
             if role_index is not None:
                 _log(f"开始扫荡第{role_index}个角色。")
             break
+        last_score = max_val
         _sleep_check_stop(stop_event, 3)
     else:
-        _log("错误，切角色卡住了哥")
+        score_msg = f"，最高匹配阈值: {last_score:.3f}" if last_score is not None else ""
+        _log("错误，切角色卡住了哥" + score_msg)
         return
 
     if stop_event is not None and stop_event.is_set():
@@ -72,8 +105,12 @@ def sweep(log_callback=None, stop_event=None, role_index=None):
         return
 
     # 4. 找图 btn_menu 并点击
-    if find_image_and_click(region, BASE_DIR / "picture/btn_menu.png"):
+    found_menu, menu_score = find_image_and_click_with_score(region, BASE_DIR / "picture/btn_menu.png")
+    if found_menu:
         _sleep_check_stop(stop_event, 0.5)
+    else:
+        score_msg = f"，最高匹配阈值: {menu_score:.3f}" if menu_score is not None else ""
+        _log('错误：未找到"选单"键，请确认是否遮挡，或存在背景干扰！' + score_msg)
     if stop_event is not None and stop_event.is_set():
         return
     # 5. 找图 change_char 并点击
@@ -115,9 +152,10 @@ def run_main(total_roles=53):
         sweep(role_index=x)
 
 
-def run_sweep_loop(stop_event, status_callback, log_callback=None, total_roles=53):
+def run_sweep_loop(stop_event, status_callback, log_callback=None, total_roles=53, tenebris_enabled=False):
     """供 GUI 在后台线程调用：可中断的扫荡循环。
-    stop_event.is_set() 时退出；log_callback 用于输出日志。"""
+    stop_event.is_set() 时退出；log_callback 用于输出日志。
+    tenebris_enabled 为 True 时，每个角色在进入主扫荡前先执行一次泰涅布利斯流程。"""
     if log_callback is None:
         log_callback = lambda msg: None
     try:
@@ -126,7 +164,7 @@ def run_sweep_loop(stop_event, status_callback, log_callback=None, total_roles=5
                 log_callback("已手动停止")
                 status_callback("已手动停止")
                 return
-            sweep(log_callback=log_callback, stop_event=stop_event, role_index=x)
+            sweep(log_callback=log_callback, stop_event=stop_event, role_index=x, tenebris_enabled=tenebris_enabled)
         log_callback("全部角色扫荡完成。")
         status_callback("全部角色扫荡完成。")
     except Exception as e:
