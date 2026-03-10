@@ -2,23 +2,25 @@
 鼠标连点器 - 按热键开启/关闭自动点击
 依赖: pip install pynput
 """
-import time
-import threading
 import sys
+import threading
+import time
+
+from pynput.keyboard import Key, Listener as KeyListener
 from pynput.mouse import Button, Controller as MouseController
-from pynput.keyboard import Listener as KeyListener, Key
 
 # ========== 可调参数 ==========
 CLICKS_PER_SECOND = 10      # 每秒点击次数
 USE_RIGHT_BUTTON = False    # True=右键连点, False=左键连点
-TOGGLE_HOTKEY = Key.f6      # 按 F6 开启/关闭连点
-STOP_HOTKEY = Key.f7        # 按 F7 强制停止
+TOGGLE_HOTKEY = Key.f11     # 按 F11 开启/关闭连点
+STOP_HOTKEY = Key.f12       # 按 F12 强制停止
 EXIT_HOTKEY = Key.esc       # 按 Esc 退出程序
-# ==============================
+# =============================
 
 mouse = MouseController()
 running = False
 click_thread = None
+
 
 def click_loop():
     """在后台线程中持续点击"""
@@ -27,6 +29,7 @@ def click_loop():
     while running:
         mouse.click(button, 1)
         time.sleep(interval)
+
 
 def on_press(key):
     global running, click_thread
@@ -50,9 +53,10 @@ def on_press(key):
             if click_thread and click_thread.is_alive():
                 click_thread.join(timeout=0.5)
             # 停止键盘监听
-            return False  # 这会停止监听器
+            return False
     except Exception as e:
         print(f"错误: {e}")
+
 
 def main():
     btn = "右键" if USE_RIGHT_BUTTON else "左键"
@@ -61,14 +65,15 @@ def main():
     print("=" * 40)
     print(f"  点击方式: {btn}")
     print(f"  点击频率: {CLICKS_PER_SECOND} 次/秒")
-    print(f"  按 F6: 开启/关闭连点")
-    print(f"  按 F7: 强制停止")
-    print(f"  按 Esc: 退出程序")
+    print("  按 F11: 开启/关闭连点")
+    print("  按 F12: 强制停止")
+    print("  按 Esc: 退出程序")
     print("=" * 40)
-    print("  程序运行中，按 F6 开始连点...")
+    print("  程序运行中，按 F11 开始连点...")
 
     with KeyListener(on_press=on_press) as listener:
         listener.join()
+
 
 if __name__ == "__main__":
     try:
