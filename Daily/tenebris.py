@@ -106,12 +106,13 @@ def run_tenebris_loop(stop_event, log_callback=None):
         pyautogui.moveTo(x, y)
         pyautogui.click(x, y)
         log_callback(f"第{i+1}次 已点击 泰涅布利斯。")
+        _sleep_check_stop(stop_event, 0.5)
         for _ in range(4):
             if stop_event is not None and stop_event.is_set():
                 break
             pyautogui.press("enter")
             _sleep_check_stop(stop_event, ENTER_DELAY)
-        _sleep_check_stop(stop_event, 0.8)
+        _sleep_check_stop(stop_event, 0.2)
     # 流程结束后若出现 bug 弹窗则按 esc 关闭，再继续任务
     if find_image(SEARCH_REGION, BASE_DIR / "picture" / "bug_flag.png"):
         pyautogui.press("esc")

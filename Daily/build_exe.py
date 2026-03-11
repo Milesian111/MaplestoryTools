@@ -1,6 +1,6 @@
 """
 运行此脚本可将 build_sweep_execution.py 打包为 exe（Daily 扫荡任务）。
-需要先安装：pip install pyinstaller keyboard
+需要先安装（请用与运行本脚本相同的 Python）：python -m pip install pyinstaller keyboard
 在 Daily 目录下执行：python build_exe.py
 每次运行会将版本号 +1（如 0.0.1 -> 0.0.2），并写入 build_version.txt 供下次使用。
 """
@@ -9,6 +9,14 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+# 若未安装 PyInstaller，给出明确提示（避免 pip 装到别的 Python）
+try:
+    import PyInstaller
+except ImportError:
+    print("未检测到 PyInstaller，请用【当前运行本脚本的 Python】执行：")
+    print(f"  {sys.executable} -m pip install pyinstaller keyboard")
+    sys.exit(1)
 
 # Daily 目录（本脚本所在目录）
 DAILY_DIR = Path(__file__).resolve().parent
