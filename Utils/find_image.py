@@ -2,6 +2,9 @@
 通用工具：在指定区域内查找图片，可选点击图片中心。
 cv2 读取模板失败时回退到 PIL。
 """
+import contextlib
+import os
+
 import cv2
 import numpy as np
 import pyautogui
@@ -13,19 +16,62 @@ try:
 except ImportError:
     HAS_PIL = False
 
+# 降低 OpenCV 自身日志；libpng 的 iCCP 警告仍可能走 C 库 stderr，见 _silence_stderr_fd
+try:
+    cv2.utils.logging.setLogLevel(cv2.utils.logging.LOG_LEVEL_SILENT)
+except Exception:
+    try:
+        cv2.setLogLevel(0)
+    except Exception:
+        pass
+
 MATCH_THRESHOLD = 0.99
 
 
+@contextlib.contextmanager
+def _silence_stderr_fd():
+    """屏蔽 C 库（如 libpng）直接写入 stderr 的提示，例如 iCCP: known incorrect sRGB profile。"""
+    devnull = os.open(os.devnull, os.O_WRONLY)
+    old_err = os.dup(2)
+    try:
+        os.dup2(devnull, 2)
+        yield
+    finally:
+        os.dup2(old_err, 2)
+        os.close(old_err)
+        os.close(devnull)
+
+
 def _load_template_gray(img_path_str):
-    """用 cv2 读取模板灰度图，失败则用 PIL。返回 numpy 灰度数组或 None。"""
-    template = cv2.imread(img_path_str, cv2.IMREAD_GRAYSCALE)
-    if template is not None:
-        return template
+    """用 cv2 读取模板灰度图，失败则用 PIL。返回 numpy 灰度数组或 None。
+
+    Windows 上 cv2.imread 对含中文等非 ASCII 路径会失败并打印乱码警告，
+    故优先用 Path.read_bytes + imdecode；纯英文路径同样适用。
+    """
+    p = Path(img_path_str)
+    if not p.is_file():
+        return None
+    try:
+        with _silence_stderr_fd():
+            data = np.frombuffer(p.read_bytes(), dtype=np.uint8)
+            template = cv2.imdecode(data, cv2.IMREAD_GRAYSCALE)
+        if template is not None:
+            return template
+    except Exception:
+        pass
+    try:
+        with _silence_stderr_fd():
+            template = cv2.imread(str(p.resolve()), cv2.IMREAD_GRAYSCALE)
+        if template is not None:
+            return template
+    except Exception:
+        pass
     if HAS_PIL:
         try:
-            pil_img = Image.open(img_path_str)
-            if pil_img.mode != 'L':
-                pil_img = pil_img.convert('L')
+            with _silence_stderr_fd():
+                pil_img = Image.open(p)
+            if pil_img.mode != "L":
+                pil_img = pil_img.convert("L")
             return np.array(pil_img)
         except Exception:
             pass
