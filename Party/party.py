@@ -50,7 +50,7 @@ CARHEAD_CLICK_IMAGES: Tuple[str, ...] = (
     "星星.png",
     "游戏中心.png",
     "参加.png",
-    "多人组队.png",
+    "__MULTI_COORD__",
     "下个.png",
 )
 
@@ -121,18 +121,38 @@ _KEY_ALIASES = {
 }
 
 
+# pyautogui 对按键名的命名规则与 keyboard 不完全一致，
+# 用于在“打包环境里找不到 keyboard / 无法模拟键盘”时兜底。
+_PY_AUTO_KEY_ALIASES = {
+    "page up": "pageup",
+    "page down": "pagedown",
+    "windows": "win",
+    "return": "enter",
+}
+
+
 def send_raw_key(name: str, down: bool) -> None:
     n = (name or "").strip()
     if not n:
         return
-    if not HAS_KEYBOARD or kb_lib is None:
-        return
     low = n.lower()
     k = _KEY_ALIASES.get(low, low)
-    if down:
-        kb_lib.press(k)
-    else:
-        kb_lib.release(k)
+    if HAS_KEYBOARD and kb_lib is not None:
+        if down:
+            kb_lib.press(k)
+        else:
+            kb_lib.release(k)
+        return
+
+    # 兜底：keyboard 不可用时改用 pyautogui 模拟（避免“按键完全失效”）
+    k2 = _PY_AUTO_KEY_ALIASES.get(k, k)
+    try:
+        if down:
+            pyautogui.keyDown(k2)
+        else:
+            pyautogui.keyUp(k2)
+    except Exception:
+        pass
 
 
 def keysym_to_keyboard(keysym: str) -> Optional[str]:
@@ -160,11 +180,18 @@ def send_key_tap(name: str) -> None:
     n = (name or "").strip()
     if not n:
         return
-    if not HAS_KEYBOARD or kb_lib is None:
-        return
     low = n.lower()
     k = _KEY_ALIASES.get(low, low)
-    kb_lib.press_and_release(k)
+    if HAS_KEYBOARD and kb_lib is not None:
+        kb_lib.press_and_release(k)
+        return
+
+    # 兜底：keyboard 不可用时改用 pyautogui
+    k2 = _PY_AUTO_KEY_ALIASES.get(k, k)
+    try:
+        pyautogui.press(k2)
+    except Exception:
+        pass
 
 
 @dataclass
@@ -195,12 +222,10 @@ class PartyApp:
         self.auto_stop_end_time = 0.0
         self.is_timer_expired = False
 
-        self.tolerance = float(self._ini_get("Settings", "Tolerance", "0.99") or 0.99)
-        self.auction_key = self._ini_get("Settings", "AuctionKey", "")
+        self.tolerance = float(self._ini_get("Settings", "Tolerance", "0.95") or 0.95)
         self.world_map_key = self._ini_get("Settings", "WorldMapKey", "")
         self.gather_key = self._ini_get("Settings", "GatherKey", "Space")
-        self.hook_key = self._ini_get("Settings", "HookKey", "Alt")
-        self.carhead_key = self._ini_get("Settings", "CarheadKey", "")
+        self.storm_mode = self._ini_get("Settings", "StormMode", "0") == "1"
 
         # 传送后等待固定 2000ms（已移除配置项）
         self.teleport_wait = 2000
@@ -230,7 +255,7 @@ class PartyApp:
 
         self.root = tk.Tk()
         self.root.title("好厉害组队")
-        self.root.geometry("820x600")
+        self.root.geometry("800x520")
         self.root.configure(bg="#F5F5F7")
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -356,9 +381,9 @@ class PartyApp:
             if tname == "拼图区域":
                 # 拼图等待仍允许配置；用于“识别后等待”的下一步稳定性。
                 try:
-                    self.detect_waits[tname] = int(self._ini_get("Combo", "PuzzleWaitDetect", "6000"))
+                    self.detect_waits[tname] = int(self._ini_get("Combo", "PuzzleWaitDetect", "4000"))
                 except ValueError:
-                    self.detect_waits[tname] = 6000
+                    self.detect_waits[tname] = 4000
             else:
                 # 其它识别等待固定为 300ms（已移除配置项）。
                 self.detect_waits[tname] = 300
@@ -377,7 +402,7 @@ class PartyApp:
 
     def _bind_hotkeys(self) -> None:
         if not HAS_KEYBOARD:
-            self.status_var.set("状态：请 pip install keyboard 以启用全局 F12 / 车头热键")
+            self.status_var.set("状态：请 pip install keyboard 以启用全局 F12")
             self.root.bind("<F12>", lambda e: self.toggle_bot())
             return
         try:
@@ -385,12 +410,6 @@ class PartyApp:
         except Exception:
             pass
         kb_lib.add_hotkey("f12", lambda: self.root.after(0, self.toggle_bot))
-        if self.carhead_key:
-            try:
-                hk = (self.carhead_key or "").strip().lower()
-                kb_lib.add_hotkey(hk, lambda: self.root.after(0, self.execute_carhead_sequence))
-            except Exception:
-                pass
 
     def _key_display(self, k: str) -> str:
         s = (k or "").strip()
@@ -450,29 +469,16 @@ class PartyApp:
 
     def _capture_setting_key(self, which: str) -> None:
         titles = {
-            "auction": "拍卖券键",
             "world_map": "世界地图键",
-            "carhead": "车头热键",
-            "hook": "钩锁键",
             "gather": "采集键",
         }
         k = self._capture_key(f"设置 {titles[which]}")
         if not k:
             return
         display = self._key_display(k)
-        if which == "auction":
-            self.auction_key = k
-            self.btn_auction_cfg.configure(text=f"{display}")
-        elif which == "world_map":
+        if which == "world_map":
             self.world_map_key = k
             self.btn_world_map_cfg.configure(text=f"{display}")
-        elif which == "carhead":
-            self.carhead_key = k
-            self.btn_carhead_cfg.configure(text=f"{display}")
-            self._bind_hotkeys()
-        elif which == "hook":
-            self.hook_key = k
-            self.btn_hook_cfg.configure(text=f"{display}")
         elif which == "gather":
             self.gather_key = k
             self.btn_gather_cfg.configure(text=f"{display}")
@@ -489,11 +495,22 @@ class PartyApp:
             time.sleep(0.05)
         return True
 
-    def my_sleep_action(self, ms: int, is_test: bool) -> bool:
-        if is_test:
-            time.sleep(ms / 1000.0)
-            return True
-        return self.smart_sleep(ms)
+    def my_sleep_action(self, ms: int) -> bool:
+        # 保持原有“非测试模式”的行为：挂机被停止时立刻中断。
+        return self.smart_sleep(self._resolve_interval_ms(ms))
+
+    def _resolve_interval_ms(self, ms: int, keep_for_puzzle_or_spectrum: bool = False) -> int:
+        """
+        风暴模式：除拼图/光谱相关流程外，把固定 300ms 间隔提速到 100ms。
+        其它间隔值保持不变。
+        """
+        if not self.storm_mode:
+            return ms
+        if keep_for_puzzle_or_spectrum:
+            return ms
+        if ms == 300:
+            return 100
+        return ms
 
     def safe_click(self, pname: str, click_count: int = 1) -> bool:
         pt = self.points_data.get(pname)
@@ -515,10 +532,10 @@ class PartyApp:
             return self.smart_sleep(wtime)
         return True
 
-    def _nudge_mouse_after_image_click(self, x: int, y: int) -> None:
-        """识图点击后将鼠标向右挪动，减少遮挡下一次识图。"""
+    def _nudge_mouse_after_image_click(self, x: int, y: int, dx: int = 50, dy: int = 0) -> None:
+        """识图点击后挪动鼠标，减少遮挡下一次识图。"""
         try:
-            pyautogui.moveTo(x + 50, y)
+            pyautogui.moveTo(x + dx, y + dy)
         except Exception:
             pass
 
@@ -582,7 +599,11 @@ class PartyApp:
             return False
         self._log_line(f"[车头] 匹配成功: {filename} -> 点击坐标({center[0]}, {center[1]})")
         pyautogui.click(center[0], center[1])
-        self._nudge_mouse_after_image_click(center[0], center[1])
+        # 车头操作里：点“星星.png”后鼠标下移 50 像素，其他仍向右挪动。
+        if filename == "星星.png":
+            self._nudge_mouse_after_image_click(center[0], center[1], dx=0, dy=50)
+        else:
+            self._nudge_mouse_after_image_click(center[0], center[1])
         time.sleep(0.05)
         self._log_line(f"[车头] 已点击: {filename}")
         return True
@@ -610,8 +631,9 @@ class PartyApp:
     def _run_carhead_image_sequence(self, done_msg: str) -> None:
         self._log_line("[车头] 连招开始")
         for i, fn in enumerate(CARHEAD_CLICK_IMAGES):
-            self._log_line(f"[车头] 步骤 {i + 1}/{len(CARHEAD_CLICK_IMAGES)}: {fn}")
-            if fn == "多人组队.png":
+            display_fn = "多人组队坐标" if fn == "__MULTI_COORD__" else fn
+            self._log_line(f"[车头] 步骤 {i + 1}/{len(CARHEAD_CLICK_IMAGES)}: {display_fn}")
+            if fn == "__MULTI_COORD__":
                 if not self.click_carhead_multiplayer_point():
                     self._log_line("[车头] 步骤终止: 多人组队坐标点击失败")
                     return
@@ -623,7 +645,7 @@ class PartyApp:
                 self._log_line("[车头] 等待200ms被中断，连招终止")
                 return
             if i < len(CARHEAD_CLICK_IMAGES) - 1:
-                self._log_line(f"[车头] 步骤间等待200ms完成: {fn}")
+                self._log_line(f"[车头] 步骤间等待200ms完成: {display_fn}")
         self._log_line("[车头] 连招完成")
         self.status_var.set(done_msg)
 
@@ -646,51 +668,46 @@ class PartyApp:
             return False
         return True
 
-    def perform_cook_exit(self, is_test: bool = False) -> None:
-        if self.hook_key:
-            for i in range(3):
-                send_raw_key(self.hook_key, True)
-                time.sleep(0.03)
-                send_raw_key(self.hook_key, False)
-                if i < 2 and not self.my_sleep_action(200, is_test):
-                    return
-        if not self.my_sleep_action(1500, is_test):
+    def perform_cook_exit(self) -> None:
+        # 用“做菜退场 npc”模板点击代替按 right
+        if not self.click_custom_image("做菜退场npc.png"):
             return
-        send_raw_key("right", True)
-        if not self.my_sleep_action(200, is_test):
-            send_raw_key("right", False)
+        if not self.my_sleep_action(200):
             return
-        send_raw_key("right", False)
-        for _ in range(4):
+        for _ in range(3):
             if self.gather_key:
                 send_raw_key(self.gather_key, True)
-                time.sleep(0.03)
+                time.sleep(0.05)
                 send_raw_key(self.gather_key, False)
-            if not self.my_sleep_action(300, is_test):
+            if not self.my_sleep_action(300):
                 return
 
-    def perform_spec_exit(self, is_test: bool = False) -> None:
+    def perform_spec_exit(self) -> None:
         if not self.click_custom_image("光谱退场npc.png"):
-            return
-        if not self.my_sleep_action(200, is_test):
+            # 兜底：未匹配到光谱退场npc时，尝试点击 0点广告
+            if not self.click_custom_image("0点广告.png"):
+                return
+        self.click_custom_image("光谱退场npc.png")
+        if not self.my_sleep_action(200):
             return
         for i in range(2):
             if self.gather_key:
                 send_key_tap(self.gather_key)
-            if i < 1 and not self.my_sleep_action(200, is_test):
+            if i < 1 and not self.my_sleep_action(200):
                 return
 
-    def perform_fish_exit(self, is_test: bool = False) -> None:
+    def perform_fish_exit(self) -> None:
         send_raw_key("right", True)
-        if not self.my_sleep_action(300, is_test):
+        if not self.my_sleep_action(300):
             send_raw_key("right", False)
             return
         send_raw_key("right", False)
+        time.sleep(0.2)
         for _ in range(2):
             if self.gather_key:
                 send_key_tap(self.gather_key)
                 time.sleep(0.2)
-            if not self.my_sleep_action(300, is_test):
+            if not self.my_sleep_action(300):
                 return
 
     def execute_carhead_sequence(self) -> None:
@@ -723,7 +740,7 @@ class PartyApp:
 
         if find_scene("傻福捕鱼"):
             self.status_var.set("状态：🎣 识别傻福捕鱼，离开...")
-            if not self.smart_sleep(300):
+            if not self.smart_sleep(self._resolve_interval_ms(300)):
                 return
             if self.click_leave_image():
                 if not self.smart_sleep(500):
@@ -735,13 +752,13 @@ class PartyApp:
             # 没有匹配到离开图时，回退尝试傻福捕鱼退场逻辑
             if find_scene("傻福捕鱼退场"):
                 self.status_var.set("状态：🎣 未匹配离开图，改走傻福捕鱼退场...")
-                if not self.smart_sleep(300):
+                if not self.smart_sleep(self._resolve_interval_ms(300)):
                     return
-                self.perform_fish_exit(False)
+                self.perform_fish_exit()
                 # 退场后若仍识别到傻福捕鱼，再尝试一次正常离开流程
                 if find_scene("傻福捕鱼"):
                     self.status_var.set("状态：🎣 退场后仍在傻福捕鱼，重试离开...")
-                    if not self.smart_sleep(300):
+                    if not self.smart_sleep(self._resolve_interval_ms(300)):
                         return
                     if self.click_leave_image():
                         if not self.smart_sleep(500):
@@ -753,14 +770,14 @@ class PartyApp:
 
         if find_scene("傻福捕鱼退场"):
             self.status_var.set("状态：🎣 识别傻福捕鱼退场，执行退场...")
-            if not self.smart_sleep(300):
+            if not self.smart_sleep(self._resolve_interval_ms(300)):
                 return
-            self.perform_fish_exit(False)
+            self.perform_fish_exit()
             return
 
         if find_scene("做菜退场2"):
             self.status_var.set("状态：🍳 识别做菜退场2，执行收藏地图传送...")
-            if not self.smart_sleep(300):
+            if not self.smart_sleep(self._resolve_interval_ms(300)):
                 return
             if self.perform_collection_teleport():
                 pass
@@ -768,28 +785,28 @@ class PartyApp:
 
         if find_scene("光谱退场2"):
             self.status_var.set("状态：🌈 识别光谱退场2，执行收藏地图传送...")
-            if not self.smart_sleep(300):
+            if not self.smart_sleep(self._resolve_interval_ms(300, keep_for_puzzle_or_spectrum=True)):
                 return
             self.perform_collection_teleport()
             return
 
         if find_scene("做菜退场"):
             self.status_var.set("状态：🍳 识别做菜退场，执行连招...")
-            if not self.smart_sleep(300):
+            if not self.smart_sleep(self._resolve_interval_ms(300)):
                 return
-            self.perform_cook_exit(False)
+            self.perform_cook_exit()
             return
 
         if find_scene("光谱退场"):
             self.status_var.set("状态：🚨 识别光谱退场，执行连招...")
-            if not self.smart_sleep(300):
+            if not self.smart_sleep(self._resolve_interval_ms(300, keep_for_puzzle_or_spectrum=True)):
                 return
-            self.perform_spec_exit(False)
+            self.perform_spec_exit()
             return
 
         if find_scene("厨房区域"):
             self.status_var.set("状态：🍳 识别厨房区域，离开...")
-            if not self.smart_sleep(300):
+            if not self.smart_sleep(self._resolve_interval_ms(300)):
                 return
             if not self.click_leave_image():
                 return
@@ -798,7 +815,7 @@ class PartyApp:
 
         if find_scene("星图区域"):
             self.status_var.set("状态：⭐ 识别星图区域，离开...")
-            if not self.smart_sleep(300):
+            if not self.smart_sleep(self._resolve_interval_ms(300)):
                 return
             if not self.click_custom_image("星图离开.png"):
                 return
@@ -806,7 +823,7 @@ class PartyApp:
             return
 
         if find_scene("拼图区域"):
-            ew = self.detect_waits.get("拼图区域", 6000)
+            ew = self.detect_waits.get("拼图区域", 4000)
             self.status_var.set(f"状态：🧩 识别拼图区域...等待{ew / 1000:.1f}秒")
             if ew > 0 and not self.smart_sleep(ew):
                 return
@@ -826,7 +843,7 @@ class PartyApp:
 
         if find_scene("做菜地图"):
             self.status_var.set("状态：🍳 识别做菜地图...")
-            if not self.smart_sleep(300):
+            if not self.smart_sleep(self._resolve_interval_ms(300)):
                 return
             if not self.click_custom_image("做菜离开.png"):
                 return
@@ -838,16 +855,36 @@ class PartyApp:
                 self.var_chk_autostop.set(0)
                 self.stop_monitoring("状态：⏱️ 定时已到，已进入收藏地图并停止。")
                 return
-            self.status_var.set("状态：🗺️ 识别收藏地图，车头...")
-            ew = self.detect_waits.get("收藏地图", 300)
+            self.status_var.set("状态：🗺️ 识别收藏地图，检查参加按钮...")
+            ew = self._resolve_interval_ms(self.detect_waits.get("收藏地图", 300))
             if ew > 0 and not self.smart_sleep(ew):
                 return
-            self.execute_carhead_sequence()
+            # 先尝试：在收藏地图界面优先找“参加.png”，命中后只执行后半段：
+            # 点击“参加”-> 点击多人组队坐标 -> 点击“下个”
+            participate_path = self.picture_dir / "参加.png"
+            center = match_template_in_rect(SEARCH_RECT, participate_path, self.tolerance)
+            if center is not None:
+                x, y = center
+                self._log_line(f"[收藏地图] 匹配成功: 参加.png -> 点击坐标({x}, {y})")
+                pyautogui.click(x, y)
+                self._nudge_mouse_after_image_click(x, y)
+                if not self.smart_sleep(200):
+                    return
+                if not self.click_carhead_multiplayer_point():
+                    return
+                if not self.smart_sleep(200):
+                    return
+                if not self.click_carhead_template("下个.png"):
+                    return
+                self.status_var.set("状态：🗺️ 收藏地图参加->多人组队->下个完成")
+            else:
+                # 未命中参加按钮：回退到完整车头连招
+                self.execute_carhead_sequence()
             return
 
         if find_scene("收藏村庄"):
             self.status_var.set("状态：🏘️ 识别收藏村庄，村庄车头...")
-            ew = self.detect_waits.get("收藏村庄", 300)
+            ew = self._resolve_interval_ms(self.detect_waits.get("收藏村庄", 300))
             if ew > 0 and not self.smart_sleep(ew):
                 return
             self.execute_village_carhead_sequence()
@@ -857,24 +894,34 @@ class PartyApp:
 
         if find_scene("星图退场区域"):
             self.status_var.set("状态：⭐ 识别星图退场...")
-            ew = self.detect_waits.get("星图退场区域", 300)
+            ew = self._resolve_interval_ms(self.detect_waits.get("星图退场区域", 300))
             if ew > 0 and not self.smart_sleep(ew):
                 return
-            self.perform_fish_exit(False)
+            send_raw_key("right", True)
+            if not self.my_sleep_action(300):
+                send_raw_key("right", False)
+                return
+            send_raw_key("right", False)
+            for _ in range(3):
+                if self.gather_key:
+                    send_key_tap(self.gather_key)
+                    time.sleep(0.2)
+                if not self.my_sleep_action(300):
+                    return
             return
 
         if find_scene("光谱地图"):
             self.status_var.set("状态：🌈 识别光谱地图，结束游戏...")
-            if not self.smart_sleep(300):
+            if not self.smart_sleep(self._resolve_interval_ms(300, keep_for_puzzle_or_spectrum=True)):
                 return
             if not self.safe_click("系统设置坐标"):
                 return
             if not self.click_game_end_image():
                 return
             self.status_var.set("状态：🌈 按回车确认退出...")
-            for _ in range(3):
-                send_key_tap("enter")
-                time.sleep(0.05)
+            if not self.smart_sleep(200):
+                return
+            send_key_tap("enter")
             return
 
         self.status_var.set("状态：🔍 监控中 (0,0)–(1366,768)...")
@@ -919,6 +966,14 @@ class PartyApp:
         self.btn_start.pack(pady=(16, 4))
         self.btn_stop = ttk.Button(left, text="⏹ 停止 (F12)", command=self.stop_monitoring, state=tk.DISABLED, width=22)
         self.btn_stop.pack()
+        self.btn_storm = ttk.Button(
+            left,
+            text=f"⚡ 风暴模式：{'开启' if self.storm_mode else '关闭'}",
+            command=self.toggle_storm_mode,
+            width=22,
+        )
+        # 稍微隔开：放在开始/结束按钮下方
+        self.btn_storm.pack(pady=(6, 4))
 
         mid = ttk.Frame(main, width=280)
         mid.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=8)
@@ -1008,7 +1063,7 @@ class PartyApp:
         self.fr_puzzle_wait = ttk.Frame(mid)
         ttk.Label(self.fr_puzzle_wait, text="拼图等待(ms):").pack(side=tk.LEFT)
         self.ed_puzzle_wait = ttk.Entry(self.fr_puzzle_wait, width=8, justify=tk.CENTER)
-        self.ed_puzzle_wait.insert(0, str(self.detect_waits.get("拼图区域", 6000)))
+        self.ed_puzzle_wait.insert(0, str(self.detect_waits.get("拼图区域", 4000)))
         self.ed_puzzle_wait.pack(side=tk.LEFT, padx=6)
         self.ed_puzzle_wait.bind("<KeyRelease>", lambda e: self.auto_save_all())
 
@@ -1031,6 +1086,13 @@ class PartyApp:
             command=lambda: self._open_help_image("收藏地图标识说明.png", "收藏地图标识说明"),
         )
         self.btn_capture_map_help.pack(side=tk.LEFT, padx=(8, 0))
+        self.btn_capture_map_view = ttk.Button(
+            self.fr_capture_map,
+            text="查看截图",
+            width=8,
+            command=lambda: self._open_help_image("收藏地图.png", "收藏地图截图"),
+        )
+        self.btn_capture_map_view.pack(side=tk.LEFT, padx=(8, 0))
 
         self.fr_capture_village_marker = ttk.Frame(mid)
         self.fr_capture_village_marker.pack_forget()
@@ -1048,8 +1110,13 @@ class PartyApp:
             command=lambda: self._open_help_image("收藏村庄标识说明.png", "收藏村庄标识说明"),
         )
         self.btn_capture_village_help.pack(side=tk.LEFT, padx=(8, 0))
-
-        self.btn_test = ttk.Button(mid, text="测试连招 (1 秒后)", command=self.test_combo)
+        self.btn_capture_village_view = ttk.Button(
+            self.fr_capture_village_marker,
+            text="查看截图",
+            width=8,
+            command=lambda: self._open_help_image("收藏村庄.png", "收藏村庄截图"),
+        )
+        self.btn_capture_village_view.pack(side=tk.LEFT, padx=(8, 0))
 
         right = ttk.Frame(main)
         right.pack(side=tk.LEFT, fill=tk.BOTH)
@@ -1059,61 +1126,37 @@ class PartyApp:
 
         ttk.Label(bot, text="全局参数（修改即保存）", font=("Microsoft YaHei UI", 11, "bold")).pack(anchor=tk.W)
 
-        row1 = ttk.Frame(bot)
-        row1.pack(fill=tk.X, pady=4)
-        ttk.Label(row1, text="识图匹配阈值:").pack(side=tk.LEFT)
-        self.ed_tol = ttk.Entry(row1, width=6, justify=tk.CENTER)
+        row_global = ttk.Frame(bot)
+        row_global.pack(fill=tk.X, pady=4)
+        ttk.Label(row_global, text="识图匹配阈值:").pack(side=tk.LEFT)
+        self.ed_tol = ttk.Entry(row_global, width=6, justify=tk.CENTER)
         self.ed_tol.insert(0, str(self.tolerance))
         self.ed_tol.pack(side=tk.LEFT, padx=4)
         self.ed_tol.bind("<KeyRelease>", lambda e: self.auto_save_all())
 
-        ttk.Label(row1, text="拍卖券键:").pack(side=tk.LEFT, padx=(12, 0))
-        self.btn_auction_cfg = ttk.Button(
-            row1,
-            text=f"{self._key_display(self.auction_key)}",
-            command=lambda: self._capture_setting_key("auction"),
-        )
-        self.btn_auction_cfg.pack(side=tk.LEFT, padx=(0, 8))
-
-        ttk.Label(row1, text="世界地图键:").pack(side=tk.LEFT, padx=(4, 0))
+        ttk.Label(row_global, text="世界地图键:").pack(side=tk.LEFT, padx=(12, 0))
         self.btn_world_map_cfg = ttk.Button(
-            row1,
+            row_global,
             text=f"{self._key_display(self.world_map_key)}",
             command=lambda: self._capture_setting_key("world_map"),
         )
         self.btn_world_map_cfg.pack(side=tk.LEFT, padx=(0, 8))
 
-        ttk.Label(row1, text="车头热键:").pack(side=tk.LEFT, padx=(4, 0))
-        self.btn_carhead_cfg = ttk.Button(
-            row1,
-            text=f"{self._key_display(self.carhead_key)}",
-            command=lambda: self._capture_setting_key("carhead"),
-        )
-        self.btn_carhead_cfg.pack(side=tk.LEFT, padx=(0, 4))
-
-        row2 = ttk.Frame(bot)
-        row2.pack(fill=tk.X, pady=4)
-        ttk.Label(row2, text="钩锁键:").pack(side=tk.LEFT)
-        self.btn_hook_cfg = ttk.Button(
-            row2,
-            text=f"{self._key_display(self.hook_key)}",
-            command=lambda: self._capture_setting_key("hook"),
-        )
-        self.btn_hook_cfg.pack(side=tk.LEFT, padx=(0, 12))
-
-        ttk.Label(row2, text="采集键:").pack(side=tk.LEFT, padx=(4, 0))
+        ttk.Label(row_global, text="采集键:").pack(side=tk.LEFT)
         self.btn_gather_cfg = ttk.Button(
-            row2,
+            row_global,
             text=f"{self._key_display(self.gather_key)}",
             command=lambda: self._capture_setting_key("gather"),
         )
         self.btn_gather_cfg.pack(side=tk.LEFT, padx=(0, 8))
 
         self.var_chk_autostop = tk.IntVar(value=0)
-        ttk.Checkbutton(row2, text="定时停止(分):", variable=self.var_chk_autostop).pack(side=tk.LEFT, padx=(16, 0))
-        self.ed_autostop_dur = ttk.Entry(row2, width=5)
+        ttk.Checkbutton(row_global, text="定时停止(分):", variable=self.var_chk_autostop).pack(side=tk.LEFT, padx=(16, 0))
+        self.ed_autostop_dur = ttk.Entry(row_global, width=5)
         self.ed_autostop_dur.insert(0, "60")
         self.ed_autostop_dur.pack(side=tk.LEFT, padx=4)
+        self.var_storm_mode = tk.IntVar(value=1 if self.storm_mode else 0)
+        ttk.Label(row_global, text="输入时请关闭输入法！", foreground="#d00").pack(side=tk.LEFT, padx=(12, 0))
 
         ttk.Label(root, textvariable=self.status_var, wraplength=780, font=("Microsoft YaHei UI", 10)).pack(
             fill=tk.X, padx=12, pady=(0, 8)
@@ -1157,7 +1200,6 @@ class PartyApp:
         for _tname, fr in self.point_frames.items():
             fr.pack_forget()
         self.fr_puzzle_wait.pack_forget()
-        self.btn_test.pack_forget()
         self.fr_capture_map.pack_forget()
         self.fr_capture_village_marker.pack_forget()
 
@@ -1183,7 +1225,7 @@ class PartyApp:
 
         if ct == "任务配置":
             self.ed_puzzle_wait.delete(0, self.tk.END)
-            self.ed_puzzle_wait.insert(0, str(self.detect_waits.get("拼图区域", 6000)))
+            self.ed_puzzle_wait.insert(0, str(self.detect_waits.get("拼图区域", 4000)))
             self.fr_puzzle_wait.pack(anchor=tk.W, pady=2)
             self.fr_capture_map.pack(anchor=tk.W, pady=(4, 4))
             self.fr_capture_village_marker.pack(anchor=tk.W, pady=(0, 4))
@@ -1244,11 +1286,10 @@ class PartyApp:
             self._set_ini("Settings", "Tolerance", str(self.tolerance))
         except ValueError:
             pass
-        self._set_ini("Settings", "AuctionKey", self.auction_key)
+        self.storm_mode = bool(getattr(self, "var_storm_mode", None) and self.var_storm_mode.get())
+        self._set_ini("Settings", "StormMode", "1" if self.storm_mode else "0")
         self._set_ini("Settings", "WorldMapKey", self.world_map_key)
         self._set_ini("Settings", "GatherKey", self.gather_key)
-        self._set_ini("Settings", "HookKey", self.hook_key)
-        self._set_ini("Settings", "CarheadKey", self.carhead_key)
 
         for _tn, plist in TASK_POINTS.items():
             for pname in plist:
@@ -1278,6 +1319,25 @@ class PartyApp:
             self.auto_stop_active = False
         if self.root.winfo_exists():
             self.root.after(1000, self._check_autostop_timer)
+
+    def toggle_storm_mode(self) -> None:
+        """风暴模式：除拼图/光谱外，把固定 300ms 间隔提速到 100ms。"""
+        # 切换 ui 状态
+        if hasattr(self, "var_storm_mode"):
+            new_val = 0 if self.var_storm_mode.get() else 1
+            self.var_storm_mode.set(new_val)
+            self.storm_mode = bool(new_val)
+        else:
+            self.storm_mode = not self.storm_mode
+
+        try:
+            self.btn_storm.configure(text=f"⚡ 风暴模式：{'开启' if self.storm_mode else '关闭'}")
+        except Exception:
+            pass
+
+        self._set_ini("Settings", "StormMode", "1" if self.storm_mode else "0")
+        self._save_ini()
+        self.status_var.set(f"状态：风暴模式已{'开启' if self.storm_mode else '关闭'}")
 
     def toggle_bot(self) -> None:
         if self.is_monitoring:
@@ -1318,17 +1378,6 @@ class PartyApp:
         is_welcome = ct == "首页提示"
         self.btn_start.configure(state=tk.NORMAL)
         self.btn_stop.configure(state=tk.DISABLED)
-
-    def test_combo(self) -> None:
-        self.status_var.set(f"状态：1 秒后测试 [{self.current_task}] 连招")
-        self.root.update()
-
-        def run() -> None:
-            time.sleep(1)
-            ct = self.current_task
-            self.root.after(0, lambda: self.status_var.set(f"状态：测试完成 [{ct}]"))
-
-        threading.Thread(target=run, daemon=True).start()
 
     def capture_template(self) -> None:
         ct = self.current_task
@@ -1458,7 +1507,7 @@ class PartyApp:
 
 def main() -> None:
     if not HAS_KEYBOARD:
-        print("提示: pip install keyboard 可启用全局 F12 / 车头热键")
+        print("提示: pip install keyboard 可启用全局 F12")
     PartyApp().run()
 
 

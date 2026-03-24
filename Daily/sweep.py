@@ -47,13 +47,14 @@ def sweep(log_callback=None, stop_event=None, role_index=None, tenebris_enabled=
     _log = log_callback if log_callback else lambda msg: print(msg, flush=True)
     region = SEARCH_REGION
     btn_down_path = BASE_DIR / "picture/btn_down.png"
+    btn_menu_path = BASE_DIR / "picture/btn_menu.png"
 
-    # 1. 每 3 秒找图 btn_down（不点击），找到即表示切换角色成功；最多找 40 次
+    # 1. 每 3 秒找图 btn_menu（不点击），找到即表示切换角色成功；最多找 40 次
     last_score = None
     for attempt in range(1, 41):
         if stop_event is not None and stop_event.is_set():
             return
-        found, max_val = find_image_with_score(region, btn_down_path, threshold=0.95)
+        found, max_val = find_image_with_score(region, btn_menu_path, threshold=0.95)
         if found:
             break
         last_score = max_val
