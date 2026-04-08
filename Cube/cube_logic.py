@@ -94,6 +94,37 @@ def _group_required_counts(group):
     return required
 
 
+def _max_required_counts(groups):
+    """统计多组条件下每个 key 的最大需求次数（跳过 'any'）。"""
+    max_required = {}
+    for group in groups or []:
+        required = _group_required_counts(group)
+        for key, count in required.items():
+            prev = max_required.get(key, 0)
+            if count > prev:
+                max_required[key] = count
+    return max_required
+
+
+def find_target_hits(region, groups, picture_dir, threshold=MATCH_THRESHOLD, min_distance=MIN_MATCH_DISTANCE):
+    """
+    在 region 内统计“目标集”(groups 中出现过的 key)的命中次数。
+    为避免日志噪音，单个 key 的返回次数会被截断到该 key 在各组中的最大需求次数。
+    :return: dict[str, int]，仅包含命中次数 > 0 的 key
+    """
+    picture_dir = Path(picture_dir)
+    max_required = _max_required_counts(groups)
+    hits = {}
+    for key, cap in max_required.items():
+        img_path = picture_dir / f"{key}.png"
+        positions = find_image_positions(region, img_path, threshold, min_distance)
+        n = len(positions)
+        if n <= 0:
+            continue
+        hits[key] = n if n < cap else cap
+    return hits
+
+
 def check_group_satisfied(region, group, picture_dir, threshold=MATCH_THRESHOLD, min_distance=MIN_MATCH_DISTANCE):
     """
     检查某一组终止条件是否满足：在 region 内找到每组要求的次数（不同位置）。

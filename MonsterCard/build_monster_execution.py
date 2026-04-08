@@ -30,6 +30,8 @@ from pathlib import Path
 import sys
 import os
 
+from monster_bag import run_bag_loop
+
 def get_resource_path(relative_path):
     """获取资源文件的绝对路径，兼容PyInstaller打包后的exe"""
     try:
@@ -330,10 +332,10 @@ def _run_monster_loop_recovery(stop_event, status_callback, log_callback, condit
 
 
 # 窗口尺寸（初始高度拉大）
-WIN_SIZE_NORMAL = "520x250"
-WIN_SIZE_WITH_CONDITIONS = "520x370"  # 选择终止条件时拉高（增加了高度以容纳条件3的子条件）
-WIN_SIZE_WITH_CONDITIONS_EXPANDED = "520x700"  # 条件3展开时的窗口高度
-WIN_SIZE_WITH_LOG = "520x480"
+WIN_SIZE_NORMAL = "600x250"
+WIN_SIZE_WITH_CONDITIONS = "600x370"  # 选择终止条件时拉高（增加了高度以容纳条件3的子条件）
+WIN_SIZE_WITH_CONDITIONS_EXPANDED = "600x700"  # 条件3展开时的窗口高度
+WIN_SIZE_WITH_LOG = "600x480"
 
 
 class MonsterAbilityApp:
@@ -346,6 +348,7 @@ class MonsterAbilityApp:
 
         self.stop_event = threading.Event()
         self.worker_thread = None
+        self._bag_mode = False
         self._log_visible = False
         self._conditions_visible = False
         self._cube_visible = False
@@ -408,6 +411,9 @@ class MonsterAbilityApp:
 
         self.btn_conditions = ttk.Button(btn_frame, text="选择终止条件", command=self._show_conditions_inline)
         self.btn_conditions.pack(side=tk.LEFT)
+
+        self.btn_bag = ttk.Button(btn_frame, text="开包", command=self._toggle_bag_mode)
+        self.btn_bag.pack(side=tk.LEFT, padx=(8, 0))
 
         # 注意事项（隐藏详情时显示，与顶上状态同风格，无框；部分词红色）
         NOTICE_TEXT = """注意事项：
@@ -707,6 +713,22 @@ class MonsterAbilityApp:
             self.btn_log.config(text="隐藏日志")
             self._log_visible = True
 
+    def _toggle_bag_mode(self):
+        """切换开包模式：开启后点击「开始」运行 monster_bag 逻辑；再次点击关闭。"""
+        if self.worker_thread is not None and self.worker_thread.is_alive():
+            messagebox.showinfo("提示", "请先结束当前任务后再切换开包模式。")
+            return
+        self._bag_mode = not self._bag_mode
+        if self._bag_mode:
+            self.btn_bag.config(text="开包 ✓")
+            self.status_var.set("开包模式：点击开始将运行开包逻辑（F11/F12）")
+        else:
+            self.btn_bag.config(text="开包")
+            hint = "就绪（F11 开始 / F12 结束）"
+            if not HAS_KEYBOARD:
+                hint += " [未安装 keyboard，仅窗口内有效]"
+            self.status_var.set(hint)
+
     def _log_append(self, msg):
         def _do():
             self._log_text.config(state=tk.NORMAL)
@@ -801,11 +823,18 @@ class MonsterAbilityApp:
             c3_sub_flags,
         )
         cube_type = self._cube_var.get()
-        self.worker_thread = threading.Thread(
-            target=run_monster_loop,
-            args=(self.stop_event, self._status_callback, self._log_callback, condition_flags, cube_type),
-            daemon=True,
-        )
+        if self._bag_mode:
+            self.worker_thread = threading.Thread(
+                target=run_bag_loop,
+                args=(self.stop_event, self._status_callback, self._log_callback),
+                daemon=True,
+            )
+        else:
+            self.worker_thread = threading.Thread(
+                target=run_monster_loop,
+                args=(self.stop_event, self._status_callback, self._log_callback, condition_flags, cube_type),
+                daemon=True,
+            )
         self.worker_thread.start()
 
     def _log_clear(self):

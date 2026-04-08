@@ -48,13 +48,13 @@ def activate_window(base_dir, search_region, image_path=None):
 
 
 def perform_click_sequence():
-    """执行按键序列：按空格 3 次，间隔 0.1s、0.1s，最后等待 1.5s 后再次找图。"""
+    """执行按键序列：按空格 3 次，间隔 0.1s、0.1s，最后等待 1.0s 后再次找图。"""
     _press_space()
     time.sleep(0.1)
     _press_space()
     time.sleep(0.1)
     _press_space()
-    time.sleep(1.5)
+    time.sleep(1.0)
 
 
 def _press_space():

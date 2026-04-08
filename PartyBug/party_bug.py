@@ -21,6 +21,36 @@ from Utils.find_image import find_image_with_score, get_image_center
 
 SEARCH_RECT = (0, 0, 1366, 768)
 
+_KEY_ALIASES = {
+    "space": "space",
+    " ": "space",
+    "enter": "enter",
+    "return": "enter",
+    "next": "page down",
+    "pagedown": "page down",
+    "page_down": "page down",
+    "pgdn": "page down",
+    "prior": "page up",
+    "pageup": "page up",
+    "page_up": "page up",
+    "pgup": "page up",
+    "esc": "esc",
+    "escape": "esc",
+    "tab": "tab",
+    "alt": "alt",
+    "ctrl": "ctrl",
+    "shift": "shift",
+    "win": "win",
+    "windows": "win",
+}
+
+_PY_AUTO_KEY_ALIASES = {
+    "page up": "pageup",
+    "page down": "pagedown",
+    "return": "enter",
+    "windows": "win",
+}
+
 
 class PartyBugApp:
     def __init__(self) -> None:
@@ -35,10 +65,11 @@ class PartyBugApp:
         self.poll_interval_seconds = 0.3
         self.game_key_hold_seconds = 0.05
         self.double_c_interval_seconds = 0.2
+        self.up_press_hold_seconds = 0.05
+        self.up_press_interval_seconds = 0.05
         self.up_hold_timeout_seconds = 5.0
         self.pre_click_interval_seconds = 0.2
         self.gather_key = self._ini_get("Settings", "GatherKey", "space")
-        self.jump_key = self._ini_get("Settings", "JumpKey", "c")
         self.timer_enabled = self._ini_get("Settings", "TimerEnabled", "0") == "1"
         self.timer_minutes = self._ini_get("Settings", "TimerMinutes", "60")
         self.pending_key_target: Optional[str] = None
@@ -52,7 +83,7 @@ class PartyBugApp:
         self.auto_stop_deadline: Optional[float] = None
 
         self.root = tk.Tk()
-        self.root.title("PartyBug GUI")
+        self.root.title("好不厉害组队")
         self.root.geometry("360x300")
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         icon_path = self.script_dir / "icon" / "icon.png"
@@ -88,10 +119,6 @@ class PartyBugApp:
         ttk.Label(top, text="采集键").grid(row=0, column=0, padx=(0, 6), pady=4, sticky="w")
         self.btn_gather_key = ttk.Button(top, text=self.gather_key.upper(), width=12, command=self._start_set_gather_key)
         self.btn_gather_key.grid(row=0, column=1, pady=4, sticky="w")
-
-        ttk.Label(top, text="跳跃键").grid(row=0, column=2, padx=(16, 6), pady=4, sticky="w")
-        self.btn_jump_key = ttk.Button(top, text=self.jump_key.upper(), width=12, command=self._start_set_jump_key)
-        self.btn_jump_key.grid(row=0, column=3, pady=4, sticky="w")
 
         self.var_timer_enabled = tk.IntVar(value=1 if self.timer_enabled else 0)
         ttk.Checkbutton(top, text="定时停止(分钟)", variable=self.var_timer_enabled).grid(
@@ -130,6 +157,59 @@ class PartyBugApp:
         time.sleep(self.game_key_hold_seconds)
         keyboard.release(key)
 
+    def _normalize_send_key(self, key: str) -> str:
+        n = (key or "").strip().lower()
+        return _KEY_ALIASES.get(n, n)
+
+    def _key_down_game(self, key: str) -> None:
+        k = self._normalize_send_key(key)
+        if not k:
+            return
+        try:
+            keyboard.press(k)
+            return
+        except Exception:
+            pass
+        try:
+            pyautogui.keyDown(_PY_AUTO_KEY_ALIASES.get(k, k))
+        except Exception:
+            pass
+
+    def _key_up_game(self, key: str) -> None:
+        k = self._normalize_send_key(key)
+        if not k:
+            return
+        try:
+            keyboard.release(k)
+            return
+        except Exception:
+            pass
+        try:
+            pyautogui.keyUp(_PY_AUTO_KEY_ALIASES.get(k, k))
+        except Exception:
+            pass
+
+    def _tap_game_key_stable(self, key: str) -> None:
+        # 游戏里对“瞬时点按”不稳定，这里改为短按住再释放并兜底重试。
+        k = self._normalize_send_key(key)
+        if not k:
+            return
+        hold_seconds = max(0.03, self.up_press_hold_seconds)
+        try:
+            keyboard.press(k)
+            time.sleep(hold_seconds)
+            keyboard.release(k)
+            return
+        except Exception:
+            pass
+        k2 = _PY_AUTO_KEY_ALIASES.get(k, k)
+        try:
+            pyautogui.keyDown(k2)
+            time.sleep(hold_seconds)
+            pyautogui.keyUp(k2)
+        except Exception:
+            pass
+
     def _normalize_key(self, keysym: str) -> str:
         m = {
             "Return": "enter",
@@ -150,12 +230,6 @@ class PartyBugApp:
         self._log("[设置] 请按下新的采集键")
         self.root.focus_force()
 
-    def _start_set_jump_key(self) -> None:
-        self.pending_key_target = "jump"
-        self.btn_jump_key.configure(text="请按键...")
-        self._log("[设置] 请按下新的跳跃键")
-        self.root.focus_force()
-
     def _on_key_press(self, event: tk.Event) -> None:
         if not self.pending_key_target:
             return
@@ -167,11 +241,6 @@ class PartyBugApp:
             self.btn_gather_key.configure(text=key.upper())
             self._set_ini("Settings", "GatherKey", self.gather_key)
             self._log(f"[设置] 采集键已设置为 {key}")
-        elif self.pending_key_target == "jump":
-            self.jump_key = key
-            self.btn_jump_key.configure(text=key.upper())
-            self._set_ini("Settings", "JumpKey", self.jump_key)
-            self._log(f"[设置] 跳跃键已设置为 {key}")
         self.pending_key_target = None
         self._log("[设置] 按键设置完成")
 
@@ -202,7 +271,7 @@ class PartyBugApp:
     def _activate_window_once_if_needed(self) -> None:
         if not self.need_activate_window_once:
             return
-        for image_name in ("无名村.png", "组队地图.png", "工会大厅.png", "光谱退场.png"):
+        for image_name in ("无名村.png", "图书馆地图.png", "工会大厅.png", "光谱退场.png"):
             center = get_image_center(SEARCH_RECT, self.picture_dir / image_name, threshold=self.match_threshold)
             if center is None:
                 continue
@@ -212,37 +281,65 @@ class PartyBugApp:
             self.need_activate_window_once = False
             self._log(f"[激活] 命中 {image_name}，已点击中心激活窗口")
             return
-        self._log("[激活] 未命中无名村/组队地图/工会大厅/光谱退场，继续等待")
+        self._log("[激活] 未命中无名村/图书馆地图/工会大厅/光谱退场，继续等待")
 
     def _run_until_image_disappears(self, image_name: str, hold_key: str) -> None:
-        keyboard.press(hold_key)
-        start = time.time()
+        reverse_key = "right" if hold_key == "left" else "left" if hold_key == "right" else hold_key
+
+        def _run_stage(stage_key: str, seconds: float) -> tuple[bool, bool]:
+            """返回 (是否消失, 是否被停止)。"""
+            self._key_down_game(stage_key)
+            start = time.time()
+            try:
+                while not self.stop_event.is_set():
+                    found, _ = self._find(image_name)
+                    if not found:
+                        return True, False
+                    if time.time() - start >= seconds:
+                        return False, False
+                    self._tap_game_key_stable("up")
+                    if not self._wait_or_stop(self.up_press_interval_seconds):
+                        return False, True
+                return False, True
+            finally:
+                self._key_up_game(stage_key)
+
         try:
-            while not self.stop_event.is_set():
-                found, _ = self._find(image_name)
-                if not found:
-                    break
-                if time.time() - start >= self.up_hold_timeout_seconds:
-                    raise RuntimeError(f"按住 {hold_key} 点按 up 超过{self.up_hold_timeout_seconds:.1f}秒仍匹配 {image_name}")
-                self._tap_key("up")
-                if not self._wait_or_stop(self.double_c_interval_seconds):
-                    return
+            cleared, stopped = _run_stage(hold_key, self.up_hold_timeout_seconds)
+            if stopped or cleared:
+                return
+
+            self._log(f"[脱困] {image_name} 反着来一次")
+            cleared, stopped = _run_stage(reverse_key, 3.0)
+            if stopped or cleared:
+                return
+
+            self._log(f"[脱困] {image_name} 还没出去？再来一次")
+            cleared, stopped = _run_stage(reverse_key, 10.0)
+            if stopped or cleared:
+                return
+
+            raise RuntimeError(
+                f"按住 {hold_key} 点按 up {self.up_hold_timeout_seconds:.1f}秒 + 反方向 {reverse_key} 3秒 + 10秒后仍匹配 {image_name}"
+            )
         finally:
-            keyboard.release(hold_key)
+            # 兜底释放，避免异常时残留方向键被按住
+            self._key_up_game(hold_key)
+            self._key_up_game(reverse_key)
 
     def process_once(self) -> None:
         self._activate_window_once_if_needed()
 
         found_nameless, score_nameless = self._find("无名村.png")
         if found_nameless:
-            self._log(f"[无名村] 命中 score={score_nameless:.4f}，开始 下拉->次元->组队->移动")
-            if not self._wait_or_stop(1.0):
+            self._log(f"[无名村] ，开始进入图书馆...")
+            if not self._wait_or_stop(0.5):
                 return
-            for name in ("下拉.png", "次元.png", "组队.png", "移动.png"):
+            for name in ("下拉.png", "次元.png", "图书馆.png", "移动.png"):
                 if self.stop_event.is_set():
                     return
                 if not self._click_if_found(name):
-                    self._log(f"[无名村] 未找到 {name}，前置流程终止")
+                    self._log(f"[无名村] 未找到 {name}，流程终止")
                     break
                 self._log(f"[无名村] 已点击 {name}")
                 cur_x, cur_y = pyautogui.position()
@@ -250,49 +347,32 @@ class PartyBugApp:
                 if not self._wait_or_stop(self.pre_click_interval_seconds):
                     return
 
-        found_team_map, score_team_map = self._find("组队地图.png")
+        found_team_map, score_team_map = self._find("图书馆地图.png")
         if found_team_map:
-            self._log(f"[组队地图] 命中 score={score_team_map:.4f}")
-            if not self._wait_or_stop(1):
-                return
-            self._tap_key("left")
-            if not self._wait_or_stop(0.1):
-                return
-            self._tap_key(self.jump_key)
-            if not self._wait_or_stop(self.double_c_interval_seconds):
-                return
-            self._tap_key(self.jump_key)
-            if not self._wait_or_stop(1.0):
-                return
-            self._run_until_image_disappears("组队地图.png", "left")
+            self._log(f"[图书馆地图] 准备离开...")
+            self._run_until_image_disappears("图书馆地图.png", "left")
 
         found_guild, score_guild = self._find("工会大厅.png")
         if found_guild:
-            self._log(f"[工会大厅] 命中 score={score_guild:.4f}")
-            if not self._wait_or_stop(1):
-                return
-            self._tap_key(self.jump_key)
-            if not self._wait_or_stop(self.double_c_interval_seconds):
-                return
-            self._tap_key(self.jump_key)
-            if not self._wait_or_stop(1.0):
-                return
+            self._log(f"[工会大厅] 准备离开...")
             self._run_until_image_disappears("工会大厅.png", "right")
 
         found_spec_exit, score_spec = self._find("光谱退场.png")
         if found_spec_exit:
-            self._log(f"[光谱退场] 命中 score={score_spec:.4f}")
+            self._log(f"[光谱退场] 命中")
             if self._click_if_found("光谱退场npc.png"):
-                self._log("[光谱退场] 已点击 光谱退场npc.png")
+                self._log("[光谱退场] 点击光谱退场npc")
+                cur_x, cur_y = pyautogui.position()
+                pyautogui.moveTo(cur_x + 50, cur_y)
                 if not self._wait_or_stop(0.2):
                     return
                 self._tap_key(self.gather_key)
                 if not self._wait_or_stop(self.double_c_interval_seconds):
                     return
                 self._tap_key(self.gather_key)
-                self._log("[光谱退场] 已按两次采集键")
+                self._log("[光谱退场] 按采集键")
             else:
-                self._log("[光谱退场] 未找到 光谱退场npc.png")
+                self._log("[光谱退场] 未找到 光谱退场npc")
 
     def _worker_loop(self) -> None:
         self._log("[系统] 监控开始")

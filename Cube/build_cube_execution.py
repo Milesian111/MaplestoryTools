@@ -21,7 +21,7 @@ except ImportError:
     HAS_WINSOUND = False
 
 from click_sequence import activate_window, perform_click_sequence
-from cube_logic import check_any_termination_satisfied, check_green_found, SEARCH_REGION
+from cube_logic import check_any_termination_satisfied, check_green_found, find_target_hits, SEARCH_REGION
 
 # 与 build_cube_execution.py 同级的 picture 目录，即项目下的 Cube/picture/
 _CUBE_DIR = Path(__file__).resolve().parent
@@ -157,7 +157,12 @@ def run_cube_loop(stop_event, status_callback, log_callback=None, equipment_type
                 status_callback("已找到终止条件")
                 found_condition = True
                 break
-            log_callback(f"第{n}次，未找到目标条件")
+            hits = find_target_hits(SEARCH_REGION, termination_groups, picture_dir)
+            if hits:
+                parts = [f"{cnt}个{ATTR_LABELS.get(key, key)}" for key, cnt in sorted(hits.items())]
+                log_callback(f"第{n}次，找到" + "，".join(parts))
+            else:
+                log_callback(f"第{n}次，未找到目标条件")
             perform_click_sequence()
             if stop_event.is_set():
                 break
