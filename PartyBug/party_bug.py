@@ -7,12 +7,13 @@ import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import scrolledtext, ttk
-from typing import Optional
+from typing import Any, Optional
 
 import keyboard
 import pyautogui
 
 _ROOT = Path(__file__).resolve().parent.parent
+_PARTY_DIR = _ROOT / "Party"
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
@@ -72,6 +73,8 @@ class PartyBugApp:
         self.gather_key = self._ini_get("Settings", "GatherKey", "space")
         self.timer_enabled = self._ini_get("Settings", "TimerEnabled", "0") == "1"
         self.timer_minutes = self._ini_get("Settings", "TimerMinutes", "60")
+        _rm = self._ini_get("Settings", "RunMode", "harvest")
+        self._initial_run_mode = _rm if _rm in ("spectrum", "harvest") else "harvest"
         self.pending_key_target: Optional[str] = None
 
         self.running = False
@@ -84,7 +87,7 @@ class PartyBugApp:
 
         self.root = tk.Tk()
         self.root.title("好不厉害组队")
-        self.root.geometry("360x300")
+        self.root.geometry("360x380")
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         icon_path = self.script_dir / "icon" / "icon.png"
         if icon_path.is_file():
@@ -128,6 +131,40 @@ class PartyBugApp:
         self.ent_timer_minutes.insert(0, self.timer_minutes)
         self.ent_timer_minutes.grid(row=1, column=2, sticky="w", pady=(4, 0))
 
+        self.var_run_mode = tk.StringVar(value=self._initial_run_mode)
+        mode_fr = ttk.Frame(top)
+        mode_fr.grid(row=2, column=0, columnspan=3, sticky="w", pady=(10, 0))
+        self._run_mode_widgets: list[tk.Widget] = []
+        r1 = ttk.Radiobutton(
+            mode_fr,
+            text="找光谱",
+            variable=self.var_run_mode,
+            value="spectrum",
+            command=self._save_run_mode,
+        )
+        r1.pack(side=tk.LEFT)
+        self._run_mode_widgets.append(r1)
+        r2 = ttk.Radiobutton(
+            mode_fr,
+            text="收菜",
+            variable=self.var_run_mode,
+            value="harvest",
+            command=self._save_run_mode,
+        )
+        r2.pack(side=tk.LEFT, padx=(12, 0))
+        self._run_mode_widgets.append(r2)
+
+        self.btn_find_spectrum = ttk.Button(
+            top,
+            text="找光谱配置",
+            command=self._open_party_spectrum_config,
+        )
+        self.btn_find_spectrum.grid(row=3, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        self._party_spectrum_app: Optional[Any] = None
+        self._party_once_host: Optional[tk.Toplevel] = None
+        self._party_once_runner: Optional[Any] = None
+        self._party_once_status_trace: Optional[str] = None
+
         btn_row = ttk.Frame(self.root, padding=(10, 0, 10, 10))
         btn_row.pack(fill=tk.X)
         self.btn_start = ttk.Button(btn_row, text="开始 (F12)", command=self.start)
@@ -140,6 +177,130 @@ class PartyBugApp:
         self.log_text.configure(state=tk.DISABLED)
 
         self.root.bind("<KeyPress>", self._on_key_press)
+
+    def _open_party_spectrum_config(self) -> None:
+        """打开 Party 的「任务配置 + 全局参数」弹窗（采集键使用本窗口的采集键）。"""
+        if not _PARTY_DIR.is_dir():
+            self._log("[找光谱] 未找到 Party 目录，请确认仓库结构。")
+            return
+        party_pkg = str(_PARTY_DIR.resolve())
+        if party_pkg not in sys.path:
+            sys.path.insert(0, party_pkg)
+
+        try:
+            from party import PartyApp
+        except ImportError as e:
+            self._log(f"[找光谱] 无法加载 party 模块：{e}")
+            return
+
+        top = tk.Toplevel(self.root)
+        top.transient(self.root)
+        try:
+            self._party_spectrum_app = PartyApp(
+                top,
+                embed_mode=True,
+                config_root=_PARTY_DIR,
+                gather_key_supplier=lambda: self.gather_key,
+            )
+        except Exception as e:
+            self._log(f"[找光谱] 打开失败：{e}")
+            top.destroy()
+            self._party_spectrum_app = None
+
+    def _save_run_mode(self) -> None:
+        self._set_ini("Settings", "RunMode", self.var_run_mode.get())
+
+    def _set_run_mode_widgets_state(self, state: str) -> None:
+        for w in self._run_mode_widgets:
+            try:
+                w.configure(state=state)
+            except Exception:
+                pass
+
+    def _ensure_party_once_runner(self) -> bool:
+        """创建隐藏的 PartyOnceApp（与 party_once 相同监控逻辑），失败则返回 False。"""
+        if self._party_once_runner is not None:
+            return True
+        if not _PARTY_DIR.is_dir():
+            self._log("[找光谱] 未找到 Party 目录，请确认仓库结构。")
+            return False
+        party_pkg = str(_PARTY_DIR.resolve())
+        if party_pkg not in sys.path:
+            sys.path.insert(0, party_pkg)
+        try:
+            from party_once import PartyOnceApp
+        except ImportError as e:
+            self._log(f"[找光谱] 无法加载 party_once：{e}")
+            return False
+
+        host = tk.Toplevel(self.root)
+        host.withdraw()
+        host.transient(self.root)
+        try:
+            app = PartyOnceApp(
+                host,
+                embed_mode=True,
+                config_root=_PARTY_DIR,
+                gather_key_supplier=lambda: self.gather_key,
+            )
+        except Exception as e:
+            self._log(f"[找光谱] 初始化失败：{e}")
+            host.destroy()
+            return False
+
+        self._party_once_host = host
+        self._party_once_runner = app
+        self._party_once_status_trace = ""
+
+        def on_status(*_a: Any) -> None:
+            try:
+                v = app.status_var.get()
+            except Exception:
+                return
+            if v == self._party_once_status_trace:
+                return
+            self._party_once_status_trace = v
+            self._log(f"[找光谱] {v}")
+
+        try:
+            app.status_var.trace_add("write", on_status)
+        except AttributeError:
+            app.status_var.trace("w", lambda *_x: on_status())
+
+        return True
+
+    def _sync_party_once_timer_and_keys(self) -> None:
+        app = self._party_once_runner
+        if app is None:
+            return
+        if getattr(app, "_gather_key_supplier", None) is not None:
+            app.gather_key = app._gather_key_supplier()
+        try:
+            app.var_chk_autostop.set(1 if self.timer_enabled else 0)
+            app.ed_autostop_dur.delete(0, tk.END)
+            app.ed_autostop_dur.insert(0, self.timer_minutes)
+        except Exception:
+            pass
+
+    def _schedule_party_once_watch(self) -> None:
+        """Party 侧自行 stop_monitoring 时，同步本窗口按钮状态。"""
+        if not self.running:
+            return
+        app = self._party_once_runner
+        if self.var_run_mode.get() != "spectrum" or app is None:
+            return
+        if not app.is_monitoring:
+            self.root.after(0, self._on_party_once_self_stopped)
+            return
+        self.root.after(300, self._schedule_party_once_watch)
+
+    def _on_party_once_self_stopped(self) -> None:
+        if not self.running:
+            return
+        if self.var_run_mode.get() != "spectrum":
+            return
+        self._log("[系统] 找光谱监控已结束（任务内停止）。")
+        self.stop()
 
     def _log(self, message: str) -> None:
         ts = time.strftime("%H:%M:%S")
@@ -432,6 +593,33 @@ class PartyBugApp:
         self._set_ini("Settings", "TimerEnabled", "1" if self.timer_enabled else "0")
         self._set_ini("Settings", "TimerMinutes", self.timer_minutes)
 
+        mode = self.var_run_mode.get()
+        if mode == "spectrum":
+            if not self._ensure_party_once_runner():
+                return
+            self._sync_party_once_timer_and_keys()
+            self.stop_event.clear()
+            self.auto_stop_deadline = None
+            self._log("[系统] 找光谱监控开始（F12 或「停止」结束）")
+            if self.timer_enabled:
+                try:
+                    minutes = float(self.timer_minutes)
+                    if minutes <= 0:
+                        raise ValueError
+                    self._log(
+                        f"[系统] 定时停止已开启：约 {minutes:g} 分钟内由组队逻辑在适当时机停止（与 Party 一致）"
+                    )
+                except Exception:
+                    self._log(f"[系统] 定时停止参数无效：{self.timer_minutes}，已忽略定时")
+
+            self.running = True
+            self.btn_start.configure(state=tk.DISABLED)
+            self.btn_stop.configure(state=tk.NORMAL)
+            self._set_run_mode_widgets_state(tk.DISABLED)
+            self._party_once_runner.start_monitoring()
+            self._schedule_party_once_watch()
+            return
+
         self.auto_stop_deadline = None
         if self.timer_enabled:
             try:
@@ -448,21 +636,40 @@ class PartyBugApp:
         self.running = True
         self.btn_start.configure(state=tk.DISABLED)
         self.btn_stop.configure(state=tk.NORMAL)
+        self._set_run_mode_widgets_state(tk.DISABLED)
         self.worker = threading.Thread(target=self._worker_loop, daemon=True)
         self.worker.start()
 
     def stop(self) -> None:
         if not self.running:
             return
+        if self.var_run_mode.get() == "spectrum" and self._party_once_runner is not None:
+            try:
+                self._party_once_runner.stop_monitoring()
+            except Exception:
+                pass
         self.stop_event.set()
         self.auto_stop_deadline = None
         self.running = False
         self.btn_start.configure(state=tk.NORMAL)
         self.btn_stop.configure(state=tk.DISABLED)
+        self._set_run_mode_widgets_state(tk.NORMAL)
         self._log("[系统] 停止中...")
 
     def on_close(self) -> None:
         self.stop_event.set()
+        if self._party_once_runner is not None:
+            try:
+                self._party_once_runner.stop_monitoring()
+            except Exception:
+                pass
+            self._party_once_runner = None
+        if self._party_once_host is not None:
+            try:
+                self._party_once_host.destroy()
+            except Exception:
+                pass
+            self._party_once_host = None
         self._unhook_hotkeys()
         self.root.destroy()
 
